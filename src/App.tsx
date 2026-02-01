@@ -55,7 +55,6 @@ function AutoCaptureContent({
   }
   return (
     <>
-      <PreviewPanel pdf={pdf} file={file} />
       <ExportControls
         pdf={pdf}
         file={file}
@@ -63,6 +62,7 @@ function AutoCaptureContent({
         onSuccess={onSuccess}
         abortRef={exportAbortRef}
       />
+      <PreviewPanel pdf={pdf} file={file} />
       <button type="button" className={styles.clearBtn} onClick={onClear}>
         Clear / Upload another PDF
       </button>

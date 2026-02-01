@@ -27,6 +27,21 @@ export function getPageCount(pdf: PDFDocument): number {
   return pdf.numPages;
 }
 
+/** Get page viewport dimensions at scale 1 (for computing fit-to-height scale). */
+export async function getPageViewport(
+  pdf: PDFDocument,
+  pageNum: number,
+  rotation: number = 0
+): Promise<{ width: number; height: number }> {
+  const page = await pdf.getPage(pageNum);
+  try {
+    const viewport = page.getViewport({ scale: 1, rotation });
+    return { width: viewport.width, height: viewport.height };
+  } finally {
+    page.cleanup();
+  }
+}
+
 export async function renderPageToCanvas(
   pdf: PDFDocument,
   pageNum: number,

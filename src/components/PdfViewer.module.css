@@ -65,7 +65,8 @@
 
 .scrollContainer {
   overflow-y: auto;
-  max-height: 70vh;
+  height: min(80vh, 900px);
+  min-height: 400px;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;

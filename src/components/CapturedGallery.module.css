@@ -128,3 +128,44 @@
   height: 160px;
   object-fit: contain;
 }
+
+.placeholderTile {
+  position: relative;
+  width: 120px;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.placeholderShimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    var(--bg-elevated) 0%,
+    var(--border-subtle) 50%,
+    var(--bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.placeholderLabel {
+  position: relative;
+  z-index: 1;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0.5rem;
+  text-align: center;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

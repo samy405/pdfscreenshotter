@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import type { PDFDocument } from '../lib/pdfUtils';
-import { renderPageToCanvas } from '../lib/pdfUtils';
+import { renderPageToCanvas, getPageViewport } from '../lib/pdfUtils';
 import {
   getActivePageFromIntersections,
   debounceActivePage,
@@ -22,7 +22,7 @@ import { EditToolbar } from './EditToolbar';
 import type { AnnotationKind } from '../types';
 import styles from './PdfViewer.module.css';
 
-const DEBOUNCE_MS = 280;
+const DEBOUNCE_MS = 150;
 
 type Props = {
   pdf: PDFDocument;
@@ -40,6 +40,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   const capture = useAutoCapture();
   const {
     capturedSet,
+    capturingSet,
     annotations,
     appendAnnotation,
     removeLastAnnotation,
@@ -53,6 +54,8 @@ export function PdfViewer({ pdf, file, onError }: Props) {
     setAutoCaptureEnabled,
     activePage,
     setActivePage,
+    addCapturing,
+    removeCapturing,
     addCapture,
     removeCapture,
     setCapture,
@@ -124,6 +127,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
     async (pageNum: number, replace = false) => {
       if (capturingRef.current) return;
       capturingRef.current = true;
+      if (!replace) addCapturing(pageNum);
       const pdfCanvas = document.createElement('canvas');
       const overlayCanvas = document.createElement('canvas');
       try {
@@ -186,6 +190,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
           addCapture(pageNum, { fullSizeBlob: fullBlob, thumbnailUrl });
         }
       } catch (err) {
+        if (!replace) removeCapturing(pageNum);
         const msg = err instanceof Error ? err.message : String(err);
         onError(`Capture failed: ${msg}`);
       } finally {
@@ -194,6 +199,8 @@ export function PdfViewer({ pdf, file, onError }: Props) {
     },
     [
       pdf,
+      addCapturing,
+      removeCapturing,
       scale,
       format,
       jpgQuality,
@@ -210,10 +217,10 @@ export function PdfViewer({ pdf, file, onError }: Props) {
       debounceActivePage<number | null>(DEBOUNCE_MS, (page) => {
         if (page == null) return;
         if (!autoCaptureEnabled) return;
-        if (capturedSet.has(page)) return;
+        if (capturedSet.has(page) || capturingSet.has(page)) return;
         performCapture(page);
       }),
-    [autoCaptureEnabled, capturedSet, performCapture]
+    [autoCaptureEnabled, capturedSet, capturingSet, performCapture]
   );
 
   useEffect(() => {
@@ -241,6 +248,27 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   );
 
   const [pageDimensions, setPageDimensions] = useState<Record<number, { w: number; h: number }>>({});
+  const [viewerScale, setViewerScale] = useState(2);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const computeScale = async () => {
+      const h = container.clientHeight;
+      if (h <= 0) return;
+      try {
+        const vp = await getPageViewport(pdf, 1, 0);
+        const s = Math.max(1, Math.min(4, h / vp.height));
+        setViewerScale(s);
+      } catch {
+        setViewerScale(2);
+      }
+    };
+    computeScale();
+    const ro = new ResizeObserver(computeScale);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [pdf]);
 
   const rotateCurrent = useCallback(() => {
     if (activePage == null) return;
@@ -405,7 +433,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                 <LazyPageCanvas
                   pdf={pdf}
                   pageNum={pageNum}
-                  scale={scale}
+                  scale={viewerScale}
                   rotation={rotation}
                   setCanvasRef={(c) => setPageCanvasRef(pageNum, c)}
                   onDimensions={(w, h) =>

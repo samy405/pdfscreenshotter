@@ -16,6 +16,8 @@ type AutoCaptureContextValue = {
   captures: Map<number, CapturedPage>;
   /** Set of page numbers that have been captured (for "at most once" auto-capture). */
   capturedSet: Set<number>;
+  /** Set of page numbers currently being captured (for placeholder display). */
+  capturingSet: Set<number>;
   /** Page numbers selected for export (subset of captured). */
   selectedForExport: Set<number>;
   /** Annotations per page (1-based). */
@@ -31,6 +33,8 @@ type AutoCaptureContextValue = {
   /** Currently active page (highest intersection ratio). */
   activePage: number | null;
 
+  addCapturing: (pageNum: number) => void;
+  removeCapturing: (pageNum: number) => void;
   addCapture: (pageNum: number, capture: CapturedPage) => void;
   removeCapture: (pageNum: number) => void;
   setCapture: (pageNum: number, capture: CapturedPage) => void;
@@ -52,7 +56,7 @@ type AutoCaptureContextValue = {
   setAutoCaptureEnabled: (enabled: boolean) => void;
   setActivePage: (page: number | null) => void;
 
-  /** Ordered list of captured page numbers (for gallery display). */
+  /** Ordered list of captured page numbers (for gallery display), includes placeholders. */
   capturedPageNumbers: number[];
   /** Scroll the viewer to a given page (set by PdfViewer). */
   scrollToPage: ((pageNum: number) => void) | null;
@@ -71,14 +75,33 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
   const [activePage, setActivePage] = useState<number | null>(null);
   const [scrollToPageFn, setScrollToPageFn] = useState<((pageNum: number) => void) | null>(null);
+  const [capturingSet, setCapturingSet] = useState<Set<number>>(new Set());
 
   const capturedSet = useMemo(() => new Set(captures.keys()), [captures]);
   const capturedPageNumbers = useMemo(
-    () => Array.from(captures.keys()).sort((a, b) => a - b),
-    [captures]
+    () =>
+      Array.from(new Set([...captures.keys(), ...capturingSet])).sort((a, b) => a - b),
+    [captures, capturingSet]
   );
 
+  const addCapturing = useCallback((pageNum: number) => {
+    setCapturingSet((prev) => new Set(prev).add(pageNum));
+  }, []);
+
+  const removeCapturing = useCallback((pageNum: number) => {
+    setCapturingSet((prev) => {
+      const next = new Set(prev);
+      next.delete(pageNum);
+      return next;
+    });
+  }, []);
+
   const addCapture = useCallback((pageNum: number, capture: CapturedPage) => {
+    setCapturingSet((prev) => {
+      const next = new Set(prev);
+      next.delete(pageNum);
+      return next;
+    });
     setCaptures((prev) => {
       const next = new Map(prev);
       const existing = next.get(pageNum);
@@ -90,6 +113,11 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeCapture = useCallback((pageNum: number) => {
+    setCapturingSet((prev) => {
+      const next = new Set(prev);
+      next.delete(pageNum);
+      return next;
+    });
     setCaptures((prev) => {
       const next = new Map(prev);
       const c = next.get(pageNum);
@@ -155,6 +183,7 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
   }, [captures, selectedForExport]);
 
   const clearAllCaptures = useCallback(() => {
+    setCapturingSet(new Set());
     setCaptures((prev) => {
       prev.forEach((c) => {
         if (c.thumbnailUrl) URL.revokeObjectURL(c.thumbnailUrl);
@@ -242,6 +271,9 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
     () => ({
       captures,
       capturedSet,
+      capturingSet,
+      addCapturing,
+      removeCapturing,
       selectedForExport,
       annotations,
       annotationUndo,
@@ -274,6 +306,7 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
     [
       captures,
       capturedSet,
+      capturingSet,
       selectedForExport,
       annotations,
       annotationUndo,
@@ -281,6 +314,8 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
       pageRotations,
       autoCaptureEnabled,
       activePage,
+      addCapturing,
+      removeCapturing,
       addCapture,
       removeCapture,
       setCapture,

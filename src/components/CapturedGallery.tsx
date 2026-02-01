@@ -13,6 +13,7 @@ type Props = {
 export function CapturedGallery({ onSuccess, onError }: Props) {
   const {
     captures,
+    capturingSet,
     capturedPageNumbers,
     selectedForExport,
     toggleSelected,
@@ -25,11 +26,15 @@ export function CapturedGallery({ onSuccess, onError }: Props) {
   const { format, prefix } = useExportSettings();
   const [isExporting, setIsExporting] = useState(false);
 
-  const selectedCount = capturedPageNumbers.filter((pn) => selectedForExport.has(pn)).length;
+  const selectedCount = capturedPageNumbers.filter(
+    (pn) => captures.has(pn) && selectedForExport.has(pn)
+  ).length;
   const capturedCount = capturedPageNumbers.length;
 
   const handleExport = useCallback(async () => {
-    const selected = capturedPageNumbers.filter((pn) => selectedForExport.has(pn));
+    const selected = capturedPageNumbers.filter(
+      (pn) => captures.has(pn) && selectedForExport.has(pn)
+    );
     if (selected.length === 0) {
       onError('No pages selected. Select at least one captured page to export.');
       return;
@@ -122,8 +127,8 @@ export function CapturedGallery({ onSuccess, onError }: Props) {
       <div className={styles.grid}>
         {capturedPageNumbers.map((pageNum) => {
           const capture = captures.get(pageNum);
-          const selected = selectedForExport.has(pageNum);
-          if (!capture) return null;
+          const isCapturing = capturingSet.has(pageNum);
+          const selected = captures.has(pageNum) && selectedForExport.has(pageNum);
           return (
             <div key={pageNum} className={styles.item}>
               <label className={styles.checkLabel}>
@@ -131,18 +136,25 @@ export function CapturedGallery({ onSuccess, onError }: Props) {
                   type="checkbox"
                   checked={selected}
                   onChange={() => toggleSelected(pageNum)}
-                  disabled={isExporting}
+                  disabled={isExporting || isCapturing}
                 />
                 <span className={styles.pageNum}>Page {pageNum}</span>
               </label>
-              <button
-                type="button"
-                className={styles.thumbBtn}
-                onClick={() => scrollToPage?.(pageNum)}
-                title={`Go to page ${pageNum}`}
-              >
-                <img src={capture.thumbnailUrl} alt={`Page ${pageNum}`} />
-              </button>
+              {isCapturing ? (
+                <div className={styles.placeholderTile} aria-busy="true">
+                  <div className={styles.placeholderShimmer} />
+                  <span className={styles.placeholderLabel}>Capturing page {pageNum}…</span>
+                </div>
+              ) : capture ? (
+                <button
+                  type="button"
+                  className={styles.thumbBtn}
+                  onClick={() => scrollToPage?.(pageNum)}
+                  title={`Go to page ${pageNum}`}
+                >
+                  <img src={capture.thumbnailUrl} alt={`Page ${pageNum}`} />
+                </button>
+              ) : null}
             </div>
           );
         })}
