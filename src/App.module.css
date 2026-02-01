@@ -14,3 +14,11 @@
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
+
+/* Wrapper for viewer: takes vertical space below mode controls */
+.viewerWrapper {
+  flex: 1;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+}

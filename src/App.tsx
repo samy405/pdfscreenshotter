@@ -45,7 +45,9 @@ function AutoCaptureContent({
           onSuccess={onSuccess}
           abortRef={exportAbortRef}
         />
-        <PdfViewer pdf={pdf} file={file} onError={onError} />
+        <div className={styles.viewerWrapper}>
+          <PdfViewer pdf={pdf} file={file} onError={onError} />
+        </div>
         <CapturedGallery onSuccess={onSuccess} onError={onError} />
         <button type="button" className={styles.clearBtn} onClick={onClear}>
           Clear / Upload another PDF
@@ -62,7 +64,9 @@ function AutoCaptureContent({
         onSuccess={onSuccess}
         abortRef={exportAbortRef}
       />
-      <PreviewPanel pdf={pdf} file={file} />
+      <div className={styles.viewerWrapper}>
+        <PreviewPanel pdf={pdf} file={file} />
+      </div>
       <button type="button" className={styles.clearBtn} onClick={onClear}>
         Clear / Upload another PDF
       </button>

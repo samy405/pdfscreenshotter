@@ -1,3 +1,4 @@
+/* Viewer section: takes vertical space below mode controls */
 .container {
   display: flex;
   flex-direction: column;
@@ -9,6 +10,27 @@
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
   box-shadow: var(--shadow);
+  flex: 1;
+  min-height: 0; /* allow flex child to shrink */
+}
+
+/* Tall scrollable area: actual PDF page viewing */
+.scrollContainer {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 0.5rem 0;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .scrollContainer {
+    min-height: 400px;
+  }
 }
 
 .header {
@@ -63,15 +85,6 @@
   cursor: not-allowed;
 }
 
-.scrollContainer {
-  overflow-y: auto;
-  height: min(80vh, 900px);
-  min-height: 400px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 0.5rem 0;
-}
 
 .pageWrap {
   position: relative;
@@ -79,6 +92,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  max-width: 100%;
 }
 
 .pageWrap.pageActive {
@@ -89,12 +103,16 @@
 
 .pageInner {
   position: relative;
-  display: inline-block;
+  display: block;
   line-height: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
+/* Canvas at intrinsic size - no CSS scaling to avoid blur */
 .pageCanvas {
   display: block;
+  width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: 8px;
@@ -163,4 +181,19 @@
   background: var(--bg-surface);
   border-color: var(--border-strong);
   color: var(--text-primary);
+}
+
+/* Debug overlay (remove after validation) */
+.debugOverlay {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.8);
+  color: #0f0;
+  border-radius: 6px;
+  z-index: 9999;
+  pointer-events: none;
 }
