@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import type { PDFDocument } from '../lib/pdfUtils';
-import { renderPageToCanvas, getPageViewport } from '../lib/pdfUtils';
+import { renderPageToCanvas } from '../lib/pdfUtils';
 import {
   getActivePageFromIntersections,
   debounceActivePage,
@@ -248,40 +248,9 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   );
 
   const [pageDimensions, setPageDimensions] = useState<Record<number, { w: number; h: number }>>({});
-  const [viewerScale, setViewerScale] = useState(2);
-  const [debugInfo, setDebugInfo] = useState<{
-    containerWidth: number;
-    viewerScale: number;
-    exportScale: number;
-  } | null>(null);
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const computeScale = async () => {
-      const containerWidth = container.clientWidth;
-      const padding = 16;
-      const availableWidth = Math.max(200, containerWidth - padding);
-      if (availableWidth <= 0) return;
-      try {
-        const vp = await getPageViewport(pdf, 1, 0);
-        const s = Math.max(0.5, Math.min(4, availableWidth / vp.width));
-        setViewerScale(s);
-        setDebugInfo({
-          containerWidth,
-          viewerScale: s,
-          exportScale: scale,
-        });
-      } catch {
-        setViewerScale(2);
-        setDebugInfo({ containerWidth, viewerScale: 2, exportScale: scale });
-      }
-    };
-    computeScale();
-    const ro = new ResizeObserver(computeScale);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [pdf, scale]);
+  /* Fixed viewer scale for stable display; export uses ExportSettings.scale */
+  const viewerScale = 1.5;
 
   const rotateCurrent = useCallback(() => {
     if (activePage == null) return;
@@ -394,7 +363,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   }, []);
 
   return (
-    <section className={styles.container} aria-label="PDF Viewer (Auto Capture)" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <section className={styles.container} aria-label="PDF Viewer (Auto Capture)">
       <div className={styles.header}>
         <span className={styles.filename}>{file.name}</span>
         <span className={styles.pageCount}>{numPages} page{numPages !== 1 ? 's' : ''}</span>
@@ -508,11 +477,6 @@ export function PdfViewer({ pdf, file, onError }: Props) {
         })}
       </div>
 
-      {debugInfo && (
-        <div className={styles.debugOverlay} role="status" aria-live="polite">
-          containerWidth: {debugInfo.containerWidth}px | viewerScale: {debugInfo.viewerScale.toFixed(2)} | exportScale: {debugInfo.exportScale}
-        </div>
-      )}
     </section>
   );
 }

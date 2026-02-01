@@ -14,12 +14,12 @@
   min-height: 0; /* allow flex child to shrink */
 }
 
-/* Tall scrollable area: actual PDF page viewing */
+/* Tall scrollable area: fixed height ensures scrolling works */
 .scrollContainer {
   overflow-y: auto;
   overflow-x: hidden;
-  flex: 1;
-  min-height: 600px;
+  height: min(70vh, 750px);
+  min-height: 450px;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -29,7 +29,8 @@
 
 @media (max-width: 768px) {
   .scrollContainer {
-    min-height: 400px;
+    height: min(60vh, 500px);
+    min-height: 350px;
   }
 }
 
@@ -109,10 +110,8 @@
   max-width: 100%;
 }
 
-/* Canvas at intrinsic size - no CSS scaling to avoid blur */
 .pageCanvas {
   display: block;
-  width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: 8px;
@@ -183,17 +182,3 @@
   color: var(--text-primary);
 }
 
-/* Debug overlay (remove after validation) */
-.debugOverlay {
-  position: fixed;
-  bottom: 1rem;
-  right: 1rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.75rem;
-  font-family: monospace;
-  background: rgba(0, 0, 0, 0.8);
-  color: #0f0;
-  border-radius: 6px;
-  z-index: 9999;
-  pointer-events: none;
-}
