@@ -7,6 +7,11 @@ import {
   type ExportResult,
 } from '../lib/exportUtils';
 import {
+  expandRangesToPages,
+  formatPageListForDisplay,
+  validateRanges,
+} from '../lib/rangeUtils';
+import {
   type ExportFormat,
   type ExportMode,
   SCALE_PRESETS,
@@ -35,10 +40,10 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   const {
     mode,
     setMode,
-    startPage,
-    setStartPage,
-    endPage,
-    setEndPage,
+    ranges,
+    addRange,
+    removeRange,
+    updateRange,
     format,
     setFormat,
     jpgQuality,
@@ -55,11 +60,6 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (endPage > numPages) setEndPage(numPages);
-    if (startPage > numPages) setStartPage(numPages);
-  }, [numPages, endPage, startPage, setStartPage, setEndPage]);
-
-  useEffect(() => {
     setPrefix(getFilenameWithoutExtension(file.name));
   }, [file.name, setPrefix]);
 
@@ -72,18 +72,21 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
     };
   }, [abortRef]);
 
-  const validateRange = useCallback((): string | null => {
-    if (mode !== 'range') return null;
-    if (startPage < 1) return 'Start page must be at least 1.';
-    if (endPage > numPages) return `End page cannot exceed ${numPages}.`;
-    if (startPage > endPage) return 'Start page must be less than or equal to end page.';
-    return null;
-  }, [mode, startPage, endPage, numPages]);
+  const validationError = useMemo(
+    () => (mode === 'range' ? validateRanges(ranges, numPages) : null),
+    [mode, ranges, numPages]
+  );
+
+  const expandedPages = useMemo(
+    () => (mode === 'range' ? expandRangesToPages(ranges) : []),
+    [mode, ranges]
+  );
 
   const canExport = useMemo(() => {
-    const err = validateRange();
-    return !err && prefix.trim().length > 0;
-  }, [validateRange, prefix]);
+    if (prefix.trim().length === 0) return false;
+    if (mode === 'all') return true;
+    return !validationError && expandedPages.length > 0;
+  }, [mode, prefix, validationError, expandedPages]);
 
   const resetExportState = useCallback(() => {
     setProgress(null);
@@ -92,7 +95,6 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   }, []);
 
   const handleExport = useCallback(async () => {
-    const validationError = validateRange();
     if (validationError) {
       onError(validationError);
       return;
@@ -102,16 +104,20 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
       return;
     }
 
+    const pageNumbers = mode === 'all'
+      ? Array.from({ length: numPages }, (_, i) => i + 1)
+      : expandedPages;
+
+    if (pageNumbers.length === 0) {
+      onError('No pages to export.');
+      return;
+    }
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setIsExporting(true);
-    setProgress({ current: 0, total: 0, phase: 'rendering', startPage: 1, endPage: 1 });
+    setProgress({ current: 0, total: pageNumbers.length, phase: 'rendering' });
     onError('');
-
-    const total = mode === 'range' ? endPage - startPage + 1 : numPages;
-    const s = mode === 'range' ? startPage : 1;
-    const e = mode === 'range' ? endPage : numPages;
-    setProgress({ current: 0, total, phase: 'rendering', startPage: s, endPage: e });
 
     try {
       const options: ExportOptions = {
@@ -119,7 +125,7 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
         scale,
         jpgQuality,
         prefix: prefix.trim(),
-        ...(mode === 'range' && { startPage: s, endPage: e }),
+        pageNumbers,
       };
       const result = await exportPagesToZip(pdf, options, setProgress, controller.signal);
       setProgress(null);
@@ -138,14 +144,13 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   }, [
     pdf,
     mode,
-    startPage,
-    endPage,
     numPages,
+    expandedPages,
     format,
     scale,
     jpgQuality,
     prefix,
-    validateRange,
+    validationError,
     onError,
     onSuccess,
     resetExportState,
@@ -159,13 +164,19 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   const handleModeChange = useCallback(
     (m: ExportMode) => {
       setMode(m);
-      if (m === 'range') {
-        setStartPage(1);
-        setEndPage(numPages);
+      if (m === 'range' && ranges.length === 0) {
+        addRange();
       }
     },
-    [numPages, setMode, setStartPage, setEndPage]
+    [setMode, ranges.length, addRange]
   );
+
+  const exportButtonLabel = useMemo(() => {
+    if (isExporting) return 'Exporting…';
+    if (mode === 'all') return 'Export all pages';
+    const n = expandedPages.length;
+    return n === 0 ? 'Export pages' : `Export ${n} page${n !== 1 ? 's' : ''}`;
+  }, [isExporting, mode, expandedPages.length]);
 
   return (
     <section className={styles.container} aria-label="Export settings">
@@ -197,33 +208,66 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
         </div>
 
         {mode === 'range' && (
-          <div className={styles.rangeRow}>
-            <div className={styles.field}>
-              <label htmlFor="start">Start</label>
-              <input
-                id="start"
-                type="number"
-                min={1}
-                max={numPages}
-                value={startPage}
-                onChange={(e) => setStartPage(parseInt(e.target.value, 10) || 1)}
-                disabled={isExporting}
-              />
+          <>
+            <div className={styles.rangeList}>
+              {ranges.map((r) => (
+                <div key={r.id} className={styles.rangeRow}>
+                  <div className={styles.field}>
+                    <label htmlFor={`start-${r.id}`}>Start</label>
+                    <input
+                      id={`start-${r.id}`}
+                      type="number"
+                      min={1}
+                      max={numPages}
+                      value={r.start}
+                      onChange={(e) => updateRange(r.id, { start: parseInt(e.target.value, 10) || 1 })}
+                      disabled={isExporting}
+                    />
+                  </div>
+                  <span className={styles.rangeSep}>–</span>
+                  <div className={styles.field}>
+                    <label htmlFor={`end-${r.id}`}>End</label>
+                    <input
+                      id={`end-${r.id}`}
+                      type="number"
+                      min={1}
+                      max={numPages}
+                      value={r.end}
+                      onChange={(e) => updateRange(r.id, { end: parseInt(e.target.value, 10) || numPages })}
+                      disabled={isExporting}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.removeBtn}
+                    onClick={() => removeRange(r.id)}
+                    disabled={isExporting || ranges.length <= 1}
+                    aria-label={`Remove range ${r.start}–${r.end}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
-            <span className={styles.rangeSep}>–</span>
-            <div className={styles.field}>
-              <label htmlFor="end">End</label>
-              <input
-                id="end"
-                type="number"
-                min={1}
-                max={numPages}
-                value={endPage}
-                onChange={(e) => setEndPage(parseInt(e.target.value, 10) || numPages)}
-                disabled={isExporting}
-              />
-            </div>
-          </div>
+            <button
+              type="button"
+              className={styles.addRangeBtn}
+              onClick={addRange}
+              disabled={isExporting}
+            >
+              + Add range
+            </button>
+            {expandedPages.length > 0 && (
+              <div className={styles.rangeSummary}>
+                <p className={styles.pagesList}>
+                  Pages to export: {formatPageListForDisplay(expandedPages)}
+                </p>
+                <p className={styles.totalPages}>
+                  Total pages selected: {expandedPages.length}
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         <div className={styles.field}>
@@ -295,7 +339,7 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
           onClick={handleExport}
           disabled={isExporting || !canExport}
         >
-          {isExporting ? 'Exporting…' : mode === 'range' ? `Export pages ${startPage}–${endPage}` : 'Export all pages'}
+          {exportButtonLabel}
         </button>
       </div>
 

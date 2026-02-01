@@ -8,49 +8,71 @@ import {
 } from 'react';
 import type { ExportFormat, ExportMode, ScalePreset } from '../types';
 import { SCALE_PRESETS } from '../types';
+import type { PageRange } from '../lib/rangeUtils';
+import { createRangeId } from '../lib/rangeUtils';
 
 const STORAGE_KEY = 'pdf-screenshot-exporter-settings';
 
 type StoredSettings = {
   mode: ExportMode;
-  startPage: number;
-  endPage: number;
+  ranges: PageRange[];
   format: ExportFormat;
   jpgQuality: number;
   scalePreset: ScalePreset;
   prefix: string;
 };
 
-const DEFAULTS: StoredSettings = {
-  mode: 'all',
-  startPage: 1,
-  endPage: 1,
-  format: 'png',
-  jpgQuality: 0.85,
-  scalePreset: 'high',
-  prefix: '',
-};
+function defaultRange(): PageRange {
+  return { id: createRangeId(), start: 1, end: 1 };
+}
 
 function loadSettings(): StoredSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULTS };
-    const parsed = JSON.parse(raw) as Partial<StoredSettings>;
+    if (!raw) {
+      return {
+        mode: 'all',
+        ranges: [defaultRange()],
+        format: 'png',
+        jpgQuality: 0.85,
+        scalePreset: 'high',
+        prefix: '',
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<StoredSettings> & { startPage?: number; endPage?: number };
+    let ranges: PageRange[];
+    if (Array.isArray(parsed.ranges) && parsed.ranges.length > 0) {
+      ranges = parsed.ranges.map((r) => ({
+        id: typeof r.id === 'string' ? r.id : createRangeId(),
+        start: typeof r.start === 'number' ? r.start : 1,
+        end: typeof r.end === 'number' ? r.end : 1,
+      }));
+    } else if (typeof parsed.startPage === 'number' && typeof parsed.endPage === 'number') {
+      ranges = [{ id: createRangeId(), start: parsed.startPage, end: parsed.endPage }];
+    } else {
+      ranges = [defaultRange()];
+    }
     return {
-      mode: parsed.mode === 'range' ? 'range' : DEFAULTS.mode,
-      startPage: typeof parsed.startPage === 'number' ? Math.max(1, parsed.startPage) : DEFAULTS.startPage,
-      endPage: typeof parsed.endPage === 'number' ? Math.max(1, parsed.endPage) : DEFAULTS.endPage,
-      format: parsed.format === 'jpg' ? 'jpg' : DEFAULTS.format,
+      mode: parsed.mode === 'range' ? 'range' : 'all',
+      ranges,
+      format: parsed.format === 'jpg' ? 'jpg' : 'png',
       jpgQuality: typeof parsed.jpgQuality === 'number'
         ? Math.max(0.6, Math.min(0.95, parsed.jpgQuality))
-        : DEFAULTS.jpgQuality,
+        : 0.85,
       scalePreset: ['standard', 'high', 'ultra'].includes(parsed.scalePreset ?? '')
         ? (parsed.scalePreset as ScalePreset)
-        : DEFAULTS.scalePreset,
-      prefix: typeof parsed.prefix === 'string' ? parsed.prefix : DEFAULTS.prefix,
+        : 'high',
+      prefix: typeof parsed.prefix === 'string' ? parsed.prefix : '',
     };
   } catch {
-    return { ...DEFAULTS };
+    return {
+      mode: 'all',
+      ranges: [defaultRange()],
+      format: 'png',
+      jpgQuality: 0.85,
+      scalePreset: 'high',
+      prefix: '',
+    };
   }
 }
 
@@ -65,10 +87,11 @@ function saveSettings(s: StoredSettings) {
 type ExportSettingsContextValue = {
   mode: ExportMode;
   setMode: (m: ExportMode) => void;
-  startPage: number;
-  setStartPage: (n: number) => void;
-  endPage: number;
-  setEndPage: (n: number) => void;
+  ranges: PageRange[];
+  setRanges: (r: PageRange[]) => void;
+  addRange: () => void;
+  removeRange: (id: string) => void;
+  updateRange: (id: string, updates: Partial<Pick<PageRange, 'start' | 'end'>>) => void;
   format: ExportFormat;
   setFormat: (f: ExportFormat) => void;
   jpgQuality: number;
@@ -94,13 +117,42 @@ export function ExportSettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  const addRange = useCallback(() => {
+    setSettings((prev) => ({
+      ...prev,
+      ranges: [...prev.ranges, { id: createRangeId(), start: 1, end: 1 }],
+    }));
+  }, []);
+
+  const removeRange = useCallback((id: string) => {
+    setSettings((prev) => {
+      const next = prev.ranges.filter((r) => r.id !== id);
+      if (next.length === 0) return prev;
+      return { ...prev, ranges: next };
+    });
+  }, []);
+
+  const updateRange = useCallback((id: string, updates: Partial<Pick<PageRange, 'start' | 'end'>>) => {
+    setSettings((prev) => ({
+      ...prev,
+      ranges: prev.ranges.map((r) =>
+        r.id === id ? { ...r, ...updates } : r
+      ),
+    }));
+  }, []);
+
+  const setRanges = useCallback((ranges: PageRange[]) => {
+    update('ranges', ranges.length > 0 ? ranges : [defaultRange()]);
+  }, [update]);
+
   const value: ExportSettingsContextValue = {
     mode: settings.mode,
     setMode: (m) => update('mode', m),
-    startPage: settings.startPage,
-    setStartPage: (n) => update('startPage', n),
-    endPage: settings.endPage,
-    setEndPage: (n) => update('endPage', n),
+    ranges: settings.ranges,
+    setRanges,
+    addRange,
+    removeRange,
+    updateRange,
     format: settings.format,
     setFormat: (f) => update('format', f),
     jpgQuality: settings.jpgQuality,
@@ -109,9 +161,9 @@ export function ExportSettingsProvider({ children }: { children: ReactNode }) {
     setScalePreset: (p) => update('scalePreset', p),
     prefix: settings.prefix,
     setPrefix: (p) => update('prefix', p),
-  scale: SCALE_PRESETS[settings.scalePreset],
-  persist: () => saveSettings(settings),
-};
+    scale: SCALE_PRESETS[settings.scalePreset],
+    persist: () => saveSettings(settings),
+  };
 
   return (
     <ExportSettingsContext.Provider value={value}>

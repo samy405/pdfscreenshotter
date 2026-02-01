@@ -42,6 +42,10 @@ npm run preview
 
 The PDF.js worker loads from unpkg.com. This works in both dev and production. No extra build steps are needed.
 
+## Multi-range export
+
+In **Range** mode, you can define multiple page ranges (e.g., 2–3 and 5–6) and export them all in one ZIP. The UI shows exactly what you enter; overlapping or adjacent ranges are merged silently for export only. Output pages are deduplicated and sorted in ascending order.
+
 ## Known limitations
 
 - **PDF size**: Optimized for PDFs up to ~50 pages. Larger files may be slow or hit browser memory limits.

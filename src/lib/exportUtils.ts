@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import type { PDFDocument } from './pdfUtils';
-import { getPageCount, renderPageToCanvas } from './pdfUtils';
+import { renderPageToCanvas } from './pdfUtils';
 import { sanitizeFilenamePrefix } from './filenameUtils';
 import type { ExportFormat } from '../types';
 
@@ -10,16 +10,16 @@ export type ExportOptions = {
   scale: number;
   jpgQuality: number;
   prefix: string;
-  startPage?: number;
-  endPage?: number;
+  /** Explicit list of page numbers (1-based) to export. Sorted, unique. */
+  pageNumbers: number[];
 };
 
 export type ExportProgress = {
   current: number;
   total: number;
   phase: 'rendering' | 'zipping';
-  startPage: number;
-  endPage: number;
+  /** Actual PDF page number being rendered (1-based) */
+  currentPage?: number;
 };
 
 export type ExportResult = {
@@ -56,10 +56,8 @@ export async function exportPagesToZip(
   onProgress: (progress: ExportProgress) => void,
   signal: AbortSignal
 ): Promise<ExportResult> {
-  const numPages = getPageCount(pdf);
-  const startPage = options.startPage ?? 1;
-  const endPage = options.endPage ?? numPages;
-  const total = endPage - startPage + 1;
+  const { pageNumbers } = options;
+  const total = pageNumbers.length;
   const ext = options.format === 'jpg' ? 'jpg' : 'png';
   const safePrefix = sanitizeFilenamePrefix(options.prefix) || 'screenshots';
   const zipFilename = `${safePrefix}_screenshots.zip`;
@@ -68,7 +66,7 @@ export async function exportPagesToZip(
   const offscreenCanvas = document.createElement('canvas');
 
   let completed = 0;
-  for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
+  for (const pageNum of pageNumbers) {
     if (signal.aborted) throw new DOMException('Export canceled', 'AbortError');
 
     completed += 1;
@@ -76,8 +74,7 @@ export async function exportPagesToZip(
       current: completed,
       total,
       phase: 'rendering',
-      startPage,
-      endPage,
+      currentPage: pageNum,
     });
 
     await renderPageToCanvas(pdf, pageNum, offscreenCanvas, options.scale);
@@ -100,8 +97,6 @@ export async function exportPagesToZip(
     current: total,
     total,
     phase: 'zipping',
-    startPage,
-    endPage,
   });
 
   const zipBlob = await zip.generateAsync({ type: 'blob' }, () => {});
