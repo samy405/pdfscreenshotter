@@ -23,7 +23,6 @@ import type { AnnotationKind } from '../types';
 import styles from './PdfViewer.module.css';
 
 const DEBOUNCE_MS = 280;
-const LAZY_MARGIN = 2; // render pages within active ± this
 
 type Props = {
   pdf: PDFDocument;
@@ -64,9 +63,13 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const intersectionRatios = useRef<Map<number, number>>(new Map());
+  const activePageRef = useRef<number | null>(activePage);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const initialCaptureDone = useRef(false);
   const capturingRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+
+  activePageRef.current = activePage;
 
   const setPageRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
     if (el) pageRefs.current.set(pageNum, el);
@@ -96,14 +99,24 @@ export function PdfViewer({ pdf, file, onError }: Props) {
         const ratio = e.intersectionRatio;
         intersectionRatios.current.set(pageNum, ratio);
       }
-      const active = getActivePageFromIntersections(intersectionRatios.current);
-      setActivePage(active ?? null);
+      const active = getActivePageFromIntersections(
+        intersectionRatios.current,
+        activePageRef.current
+      );
+      const next = active ?? null;
+      if (next === activePageRef.current) return;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        setActivePage(next);
+      });
     }, opts);
     observerRef.current = observer;
     Array.from(pageRefs.current.entries()).forEach(([, el]) => observer.observe(el));
     return () => {
       observer.disconnect();
       observerRef.current = null;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
   }, [numPages, setActivePage]);
 
@@ -228,13 +241,6 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   );
 
   const [pageDimensions, setPageDimensions] = useState<Record<number, { w: number; h: number }>>({});
-
-  const visibleRange = useMemo(() => {
-    const active = activePage ?? 1;
-    const start = Math.max(1, active - LAZY_MARGIN);
-    const end = Math.min(numPages, active + LAZY_MARGIN);
-    return { start, end };
-  }, [activePage, numPages]);
 
   const rotateCurrent = useCallback(() => {
     if (activePage == null) return;
@@ -385,8 +391,6 @@ export function PdfViewer({ pdf, file, onError }: Props) {
 
       <div ref={containerRef} className={styles.scrollContainer}>
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
-          const isVisible =
-            pageNum >= visibleRange.start && pageNum <= visibleRange.end;
           const isActive = activePage === pageNum;
           const alreadyCaptured = capturedSet.has(pageNum);
           const rotation = pageRotations[pageNum] ?? 0;
@@ -398,40 +402,31 @@ export function PdfViewer({ pdf, file, onError }: Props) {
               className={`${styles.pageWrap} ${isActive ? styles.pageActive : ''}`}
             >
               <div className={styles.pageInner}>
-                {isVisible ? (
-                  <LazyPageCanvas
-                    pdf={pdf}
-                    pageNum={pageNum}
-                    scale={scale}
-                    rotation={rotation}
-                    setCanvasRef={(c) => setPageCanvasRef(pageNum, c)}
-                    onDimensions={(w, h) =>
-                      setPageDimensions((prev) => ({ ...prev, [pageNum]: { w, h } }))
-                    }
+                <LazyPageCanvas
+                  pdf={pdf}
+                  pageNum={pageNum}
+                  scale={scale}
+                  rotation={rotation}
+                  setCanvasRef={(c) => setPageCanvasRef(pageNum, c)}
+                  onDimensions={(w, h) =>
+                    setPageDimensions((prev) => ({ ...prev, [pageNum]: { w, h } }))
+                  }
+                />
+                <>
+                  <AnnotationLayer
+                    width={pageDimensions[pageNum]?.w ?? 0}
+                    height={pageDimensions[pageNum]?.h ?? 0}
+                    annotations={annotations[pageNum] ?? []}
                   />
-                ) : (
                   <div
-                    className={styles.pagePlaceholder}
-                    style={{ height: 800 }}
+                    className={styles.drawOverlay}
+                    onPointerDown={(e) => handlePagePointerDown(pageNum, e)}
+                    onPointerMove={(e) => handlePagePointerMove(pageNum, e)}
+                    onPointerUp={(e) => handlePagePointerUp(pageNum, e)}
+                    onPointerLeave={(e) => handlePagePointerUp(pageNum, e)}
+                    style={{ cursor: currentTool ? 'crosshair' : 'default' }}
                   />
-                )}
-                {isVisible && (
-                  <>
-                    <AnnotationLayer
-                      width={pageDimensions[pageNum]?.w ?? 0}
-                      height={pageDimensions[pageNum]?.h ?? 0}
-                      annotations={annotations[pageNum] ?? []}
-                    />
-                    <div
-                      className={styles.drawOverlay}
-                      onPointerDown={(e) => handlePagePointerDown(pageNum, e)}
-                      onPointerMove={(e) => handlePagePointerMove(pageNum, e)}
-                      onPointerUp={(e) => handlePagePointerUp(pageNum, e)}
-                      onPointerLeave={(e) => handlePagePointerUp(pageNum, e)}
-                      style={{ cursor: currentTool ? 'crosshair' : 'default' }}
-                    />
-                  </>
-                )}
+                </>
               </div>
               {isActive && alreadyCaptured && (
                 <div className={styles.capturedBanner}>
@@ -492,17 +487,25 @@ function LazyPageCanvas({
   setCanvasRef,
   onDimensions,
 }: LazyPageCanvasProps) {
-  const canvasRef = useCallback(
-    (el: HTMLCanvasElement | null) => {
-      setCanvasRef(el);
-      if (!el) return;
-      renderPageToCanvas(pdf, pageNum, el, scale, rotation)
-        .then(() => {
-          onDimensions(el.width, el.height);
-        })
-        .catch(console.error);
-    },
-    [pdf, pageNum, scale, rotation, setCanvasRef, onDimensions]
-  );
-  return <canvas ref={canvasRef} className={styles.pageCanvas} />;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const propsRef = useRef({ setCanvasRef, onDimensions, pdf, pageNum, scale, rotation });
+  propsRef.current = { setCanvasRef, onDimensions, pdf, pageNum, scale, rotation };
+
+  const setRef = useCallback((el: HTMLCanvasElement | null) => {
+    canvasRef.current = el;
+    propsRef.current.setCanvasRef(el);
+  }, []);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const { pdf: p, pageNum: pn, scale: s, rotation: r, onDimensions: od } = propsRef.current;
+    renderPageToCanvas(p, pn, el, s, r)
+      .then(() => {
+        od(el.width, el.height);
+      })
+      .catch(console.error);
+  }, [pdf, pageNum, scale, rotation]);
+
+  return <canvas ref={setRef} className={styles.pageCanvas} />;
 }

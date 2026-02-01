@@ -7,9 +7,12 @@ export type PageIntersectionEntry = { pageNumber: number; ratio: number };
 /**
  * From IntersectionObserver entries (page container elements), pick the page with
  * the highest intersection ratio as the "active" page.
+ * When currentActive is provided, applies hysteresis to avoid rapid flipping
+ * when two pages have similar ratios near the boundary.
  */
 export function getActivePageFromIntersections(
-  entries: Map<number, number>
+  entries: Map<number, number>,
+  currentActive: number | null = null
 ): number | null {
   if (entries.size === 0) return null;
   let bestPage: number | null = null;
@@ -18,6 +21,17 @@ export function getActivePageFromIntersections(
     if (ratio > bestRatio) {
       bestRatio = ratio;
       bestPage = pageNumber;
+    }
+  }
+  if (bestPage == null) return null;
+  // Hysteresis: only switch if new leader is clearly better (>0.15 advantage)
+  // or current page is barely visible (<0.2)
+  if (currentActive != null) {
+    const currentRatio = entries.get(currentActive) ?? 0;
+    if (bestPage !== currentActive) {
+      if (currentRatio >= 0.2 && bestRatio < currentRatio + 0.15) {
+        return currentActive; // Keep current to avoid flicker
+      }
     }
   }
   return bestPage;
