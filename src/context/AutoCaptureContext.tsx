@@ -47,6 +47,7 @@ type AutoCaptureContextValue = {
   setAnnotationsForPage: (pageNum: number, list: Annotation[]) => void;
   appendAnnotation: (pageNum: number, annotation: Annotation) => void;
   removeLastAnnotation: (pageNum: number) => void;
+  removeAnnotationAt: (pageNum: number, index: number) => void;
   undoAnnotation: (pageNum: number) => void;
   redoAnnotation: (pageNum: number) => void;
   canUndo: (pageNum: number) => boolean;
@@ -239,6 +240,20 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const removeAnnotationAt = useCallback((pageNum: number, index: number) => {
+    setAnnotations((prev) => {
+      const current = prev[pageNum] ?? [];
+      if (index < 0 || index >= current.length) return prev;
+      const next = current.filter((_, i) => i !== index);
+      setAnnotationUndo((uPrev) => ({
+        ...uPrev,
+        [pageNum]: [...(uPrev[pageNum] ?? []), current],
+      }));
+      setAnnotationRedo((rPrev) => ({ ...rPrev, [pageNum]: [] }));
+      return { ...prev, [pageNum]: next };
+    });
+  }, []);
+
   const redoAnnotation = useCallback((pageNum: number) => {
     const redoStack = annotationRedo[pageNum] ?? [];
     if (redoStack.length === 0) return;
@@ -292,6 +307,7 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
       setAnnotationsForPage,
       appendAnnotation,
       removeLastAnnotation,
+      removeAnnotationAt,
       undoAnnotation,
       redoAnnotation,
       canUndo,
@@ -327,6 +343,7 @@ export function AutoCaptureProvider({ children }: { children: ReactNode }) {
       setAnnotationsForPage,
       appendAnnotation,
       removeLastAnnotation,
+      removeAnnotationAt,
       undoAnnotation,
       redoAnnotation,
       canUndo,

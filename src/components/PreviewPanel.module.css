@@ -78,7 +78,7 @@
   padding: 1rem;
   background: var(--bg-elevated);
   border-radius: 12px;
-  min-height: min(70vh, 800px);
+  min-height: var(--viewer-min-height);
 }
 
 .canvas {

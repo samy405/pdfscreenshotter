@@ -35,6 +35,19 @@
   --blur: 16px;
 }
 
+/* Shared viewer dimensions - consistent across All Pages, Ranges, Auto Capture */
+:root {
+  --viewer-min-height: min(70vh, 800px);
+  --viewer-height: min(75vh, 850px);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --viewer-min-height: min(60vh, 500px);
+    --viewer-height: min(65vh, 550px);
+  }
+}
+
 * {
   box-sizing: border-box;
 }

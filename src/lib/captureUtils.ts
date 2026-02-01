@@ -62,6 +62,65 @@ export function debounceActivePage<T>(
 
 export type ExportFormat = 'png' | 'jpg';
 
+/** Load an image from a data URL and draw it on ctx. */
+export function drawSignatureImage(
+  ctx: CanvasRenderingContext2D,
+  imageDataUrl: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, x, y, width, height);
+      resolve();
+    };
+    img.onerror = () => reject(new Error('Failed to load signature image'));
+    img.src = imageDataUrl;
+  });
+}
+
+/** Draw wrapped text inside a rect on canvas (for export). */
+export function drawTextInRect(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  color: string = '#000'
+): void {
+  const pad = 4;
+  const innerW = Math.max(20, width - pad * 2);
+  const innerH = Math.max(16, height - pad * 2);
+  let fs = Math.min(24, Math.floor(innerH / 1.3), Math.floor(innerW / 4));
+  fs = Math.max(10, fs);
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+  ctx.font = `${fs}px sans-serif`;
+  ctx.fillStyle = color;
+  for (const w of words) {
+    const test = current ? `${current} ${w}` : w;
+    const m = ctx.measureText(test);
+    if (m.width > innerW && current) {
+      lines.push(current);
+      current = w;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  const lineHeight = fs * 1.2;
+  const totalH = lines.length * lineHeight;
+  const startY = y + pad + (innerH - totalH) / 2 + fs;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, x + pad, startY + i * lineHeight);
+  });
+}
+
 /**
  * Composite PDF canvas and optional annotation overlay into a single Blob.
  * If overlay is null, returns blob from pdfCanvas only.

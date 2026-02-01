@@ -12,6 +12,8 @@ import {
   debounceActivePage,
   compositeCanvasesToBlob,
   createThumbnailBlob,
+  drawTextInRect,
+  drawSignatureImage,
 } from '../lib/captureUtils';
 import type { ExportFormat } from '../types';
 import type { Annotation } from '../types';
@@ -19,6 +21,8 @@ import { useAutoCapture } from '../context/AutoCaptureContext';
 import { useExportSettings } from '../context/ExportSettingsContext';
 import { AnnotationLayer } from './AnnotationLayer';
 import { EditToolbar } from './EditToolbar';
+import { SignatureModal } from './SignatureModal';
+import { TextEditOverlay } from './TextEditOverlay';
 import type { AnnotationKind } from '../types';
 import styles from './PdfViewer.module.css';
 
@@ -43,7 +47,9 @@ export function PdfViewer({ pdf, file, onError }: Props) {
     capturingSet,
     annotations,
     appendAnnotation,
+    setAnnotationsForPage,
     removeLastAnnotation,
+    removeAnnotationAt,
     undoAnnotation,
     redoAnnotation,
     canUndo,
@@ -162,13 +168,18 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                   }
                   break;
                 case 'text':
-                  ctx.font = `${a.fontSize}px sans-serif`;
-                  ctx.fillStyle = a.color;
-                  ctx.fillText(a.text, a.x, a.y + a.fontSize);
+                  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                  ctx.fillRect(a.x, a.y, a.width, a.height);
+                  ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                  ctx.strokeRect(a.x, a.y, a.width, a.height);
+                  drawTextInRect(ctx, a.text, a.x, a.y, a.width, a.height, a.color);
                   break;
                 case 'redaction':
                   ctx.fillStyle = '#000';
                   ctx.fillRect(a.x, a.y, a.width, a.height);
+                  break;
+                case 'signature':
+                  await drawSignatureImage(ctx, a.imageDataUrl, a.x, a.y, a.width, a.height);
                   break;
                 default:
                   break;
@@ -248,34 +259,21 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   );
 
   const [pageDimensions, setPageDimensions] = useState<Record<number, { w: number; h: number }>>({});
-  const [textIndicatorPos, setTextIndicatorPos] = useState<{
+  const [textBoxDraft, setTextBoxDraft] = useState<{
     pageNum: number;
-    x: number;
-    y: number;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
   } | null>(null);
+  const [editingText, setEditingText] = useState<{ pageNum: number; index: number } | null>(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [signatureReplaceTarget, setSignatureReplaceTarget] = useState<{ pageNum: number; index: number } | null>(null);
+  const [selectedSignature, setSelectedSignature] = useState<{ pageNum: number; index: number } | null>(null);
+  const [signatureDrag, setSignatureDrag] = useState<{ startX: number; startY: number; annX: number; annY: number } | null>(null);
 
   /* Fixed viewer scale for stable display; export uses ExportSettings.scale */
   const viewerScale = 1.5;
-
-  const handlePagePointerMoveForText = useCallback(
-    (pageNum: number, e: React.PointerEvent) => {
-      if (currentTool === 'text') {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        setTextIndicatorPos({
-          pageNum,
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      } else {
-        setTextIndicatorPos(null);
-      }
-    },
-    [currentTool]
-  );
-
-  const handlePagePointerLeave = useCallback(() => {
-    setTextIndicatorPos(null);
-  }, []);
 
   const rotateCurrent = useCallback(() => {
     if (activePage == null) return;
@@ -284,9 +282,11 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   }, [activePage, pageRotations, setPageRotation]);
 
   const drawRef = useRef<{
+    kind: 'pen' | 'highlight' | 'redaction' | 'text';
     startX: number;
     startY: number;
-    points: { x: number; y: number }[];
+    points?: { x: number; y: number }[];
+    pageNum?: number;
   } | null>(null);
 
   const getCanvasCoords = useCallback(
@@ -306,63 +306,157 @@ export function PdfViewer({ pdf, file, onError }: Props) {
     []
   );
 
+  const hitTestSignature = useCallback(
+    (pageNum: number, cx: number, cy: number): number | null => {
+      const annList = annotations[pageNum] ?? [];
+      for (let i = annList.length - 1; i >= 0; i--) {
+        const a = annList[i];
+        if (a.kind === 'signature') {
+          if (cx >= a.x && cx <= a.x + a.width && cy >= a.y && cy <= a.y + a.height) {
+            return i;
+          }
+        }
+      }
+      return null;
+    },
+    [annotations]
+  );
+
   const handlePagePointerDown = useCallback(
     (pageNum: number, e: React.PointerEvent) => {
       if (currentTool === 'eraser') {
         removeLastAnnotation(pageNum);
         return;
       }
-      if (!currentTool) return;
+      if (editingText) return;
       const coords = getCanvasCoords(pageNum, e as unknown as React.MouseEvent);
       if (!coords) return;
-      if (currentTool === 'pen') {
-        drawRef.current = { startX: coords.x, startY: coords.y, points: [coords] };
-      } else if (currentTool === 'highlight' || currentTool === 'redaction') {
-        drawRef.current = { startX: coords.x, startY: coords.y, points: [] };
-      } else if (currentTool === 'text') {
-        const text = window.prompt('Text note:');
-        if (text != null && text.trim()) {
-          appendAnnotation(pageNum, {
-            kind: 'text',
-            x: coords.x,
-            y: coords.y,
-            text: text.trim(),
-            fontSize: 16,
-            color: '#000',
-          });
+      if (!currentTool) {
+        const idx = hitTestSignature(pageNum, coords.x, coords.y);
+        if (idx != null) {
+          const ann = annotations[pageNum]?.[idx];
+          if (ann?.kind === 'signature') {
+            setSelectedSignature({ pageNum, index: idx });
+            setSignatureDrag({ startX: coords.x, startY: coords.y, annX: ann.x, annY: ann.y });
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+          }
+        } else {
+          setSelectedSignature(null);
         }
+        return;
+      }
+      if (currentTool === 'pen') {
+        drawRef.current = {
+          kind: 'pen',
+          startX: coords.x,
+          startY: coords.y,
+          points: [coords],
+        };
+      } else if (currentTool === 'highlight' || currentTool === 'redaction') {
+        drawRef.current = {
+          kind: currentTool,
+          startX: coords.x,
+          startY: coords.y,
+          points: [],
+        };
+      } else if (currentTool === 'text') {
+        drawRef.current = {
+          kind: 'text',
+          startX: coords.x,
+          startY: coords.y,
+          pageNum,
+        };
+        setTextBoxDraft({
+          pageNum,
+          startX: coords.x,
+          startY: coords.y,
+          currentX: coords.x,
+          currentY: coords.y,
+        });
       }
     },
-    [currentTool, getCanvasCoords, appendAnnotation, removeLastAnnotation]
+    [currentTool, getCanvasCoords, appendAnnotation, removeLastAnnotation, editingText, hitTestSignature, annotations]
   );
 
   const handlePagePointerMove = useCallback(
     (pageNum: number, e: React.PointerEvent) => {
-      handlePagePointerMoveForText(pageNum, e);
-      if (!currentTool || !drawRef.current) return;
       const coords = getCanvasCoords(pageNum, e as unknown as React.MouseEvent);
       if (!coords) return;
-      if (currentTool === 'pen' && drawRef.current.points.length > 0) {
-        drawRef.current.points.push(coords);
+      if (signatureDrag && selectedSignature?.pageNum === pageNum) {
+        const dx = coords.x - signatureDrag.startX;
+        const dy = coords.y - signatureDrag.startY;
+        const annList = annotations[pageNum] ?? [];
+        const ann = annList[selectedSignature.index];
+        if (ann?.kind === 'signature') {
+          const dims = pageDimensions[pageNum];
+          const maxX = (dims?.w ?? 400) - ann.width;
+          const maxY = (dims?.h ?? 600) - ann.height;
+          const newX = Math.max(0, Math.min(maxX, signatureDrag.annX + dx));
+          const newY = Math.max(0, Math.min(maxY, signatureDrag.annY + dy));
+          const updated = annList.map((a, i) =>
+            i === selectedSignature.index ? { ...a, x: newX, y: newY } : a
+          );
+          setAnnotationsForPage(pageNum, updated);
+          setSignatureDrag({ ...signatureDrag, startX: coords.x, startY: coords.y, annX: newX, annY: newY });
+        }
+        return;
+      }
+      const dr = drawRef.current;
+      if (dr?.kind === 'text' && dr.pageNum === pageNum) {
+        setTextBoxDraft((prev) =>
+          prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
+        );
+        return;
+      }
+      if (!currentTool || !dr) return;
+      if (currentTool === 'pen' && dr.kind === 'pen' && dr.points && dr.points.length > 0) {
+        dr.points.push(coords);
       }
     },
-    [currentTool, getCanvasCoords, handlePagePointerMoveForText]
+    [currentTool, getCanvasCoords, signatureDrag, selectedSignature, annotations, pageDimensions, setAnnotationsForPage]
   );
 
   const handlePagePointerUp = useCallback(
     (pageNum: number, e: React.PointerEvent) => {
+      if (signatureDrag) {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        setSignatureDrag(null);
+        return;
+      }
       if (!currentTool || currentTool === 'eraser') return;
       const dr = drawRef.current;
       drawRef.current = null;
       if (!dr) return;
-      if (currentTool === 'pen' && dr.points.length >= 2) {
+      if (dr.kind === 'text' && dr.pageNum === pageNum) {
+        setTextBoxDraft(null);
+        const endCoords = getCanvasCoords(pageNum, e as unknown as React.MouseEvent);
+        if (!endCoords) return;
+        const x = Math.min(dr.startX, endCoords.x);
+        const y = Math.min(dr.startY, endCoords.y);
+        const width = Math.max(60, Math.abs(endCoords.x - dr.startX));
+        const height = Math.max(32, Math.abs(endCoords.y - dr.startY));
+        appendAnnotation(pageNum, {
+          kind: 'text',
+          x,
+          y,
+          width,
+          height,
+          text: '',
+          fontSize: 14,
+          color: '#000',
+        });
+        const annList = annotations[pageNum] ?? [];
+        setEditingText({ pageNum, index: annList.length });
+        return;
+      }
+      if (dr.kind === 'pen' && dr.points && dr.points.length >= 2) {
         appendAnnotation(pageNum, {
           kind: 'pen',
           points: dr.points,
           strokeWidth: 2,
           color: '#000',
         });
-      } else if (currentTool === 'highlight' || currentTool === 'redaction') {
+      } else if (dr.kind === 'highlight' || dr.kind === 'redaction') {
         const endCoords = getCanvasCoords(pageNum, e as unknown as React.MouseEvent);
         if (!endCoords) return;
         const x = Math.min(dr.startX, endCoords.x);
@@ -370,16 +464,79 @@ export function PdfViewer({ pdf, file, onError }: Props) {
         const width = Math.max(10, Math.abs(endCoords.x - dr.startX));
         const height = Math.max(10, Math.abs(endCoords.y - dr.startY));
         appendAnnotation(pageNum, {
-          kind: currentTool === 'highlight' ? 'highlight' : 'redaction',
+          kind: dr.kind === 'highlight' ? 'highlight' : 'redaction',
           x,
           y,
           width,
           height,
-          ...(currentTool === 'highlight' ? { opacity: 0.35 } : {}),
+          ...(dr.kind === 'highlight' ? { opacity: 0.35 } : {}),
         } as Annotation);
       }
     },
-    [currentTool, appendAnnotation, getCanvasCoords]
+    [currentTool, appendAnnotation, getCanvasCoords, annotations, signatureDrag]
+  );
+
+  const handlePagePointerLeave = useCallback(() => {
+    if (drawRef.current?.kind === 'text') {
+      drawRef.current = null;
+      setTextBoxDraft(null);
+    }
+    setSignatureDrag(null);
+  }, []);
+
+  const handleSignatureSave = useCallback(
+    (imageDataUrl: string) => {
+      const target = signatureReplaceTarget ?? (activePage != null ? { pageNum: activePage, index: -1 } : null);
+      if (target == null) return;
+      if (target.index >= 0) {
+        const annList = annotations[target.pageNum] ?? [];
+        const ann = annList[target.index];
+        if (ann?.kind === 'signature') {
+          const updated = annList.map((a, i) =>
+            i === target.index ? { ...a, imageDataUrl } : a
+          );
+          setAnnotationsForPage(target.pageNum, updated);
+        }
+      } else {
+        const dims = pageDimensions[target.pageNum];
+        const w = dims?.w ?? 400;
+        const h = dims?.h ?? 600;
+        const sigW = 120;
+        const sigH = 60;
+        const x = Math.max(0, (w - sigW) / 2);
+        const y = Math.max(0, (h - sigH) / 2);
+        appendAnnotation(target.pageNum, {
+          kind: 'signature',
+          x,
+          y,
+          width: sigW,
+          height: sigH,
+          imageDataUrl,
+        });
+      }
+      setSignatureModalOpen(false);
+      setSignatureReplaceTarget(null);
+    },
+    [activePage, pageDimensions, appendAnnotation, signatureReplaceTarget, annotations, setAnnotationsForPage]
+  );
+
+  const handleTextEditFinish = useCallback(
+    (newText: string) => {
+      if (!editingText) return;
+      const annList = annotations[editingText.pageNum] ?? [];
+      const ann = annList[editingText.index];
+      if (!ann || ann.kind !== 'text') return;
+      if (newText.trim()) {
+        const updated = annList.map((a, i) =>
+          i === editingText.index ? { ...a, text: newText.trim() } : a
+        );
+        setAnnotationsForPage(editingText.pageNum, updated);
+      } else {
+        removeLastAnnotation(editingText.pageNum);
+      }
+      setEditingText(null);
+    },
+    [editingText, annotations, setAnnotationsForPage, removeLastAnnotation]
   );
 
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
@@ -416,13 +573,46 @@ export function PdfViewer({ pdf, file, onError }: Props) {
         )}
         <EditToolbar
           currentTool={currentTool}
-          onToolChange={setCurrentTool}
+          onToolChange={(t) => { setCurrentTool(t); setSelectedSignature(null); }}
           onUndo={() => activePage != null && undoAnnotation(activePage)}
           onRedo={() => activePage != null && redoAnnotation(activePage)}
           onRotate={rotateCurrent}
+          onSignatureClick={() => setSignatureModalOpen(true)}
           canUndo={activePage != null && canUndo(activePage)}
           canRedo={activePage != null && canRedo(activePage)}
         />
+        {selectedSignature && activePage === selectedSignature.pageNum && (
+          <div className={styles.signatureControls}>
+            <button
+              type="button"
+              className={styles.signatureDeleteBtn}
+              onClick={() => {
+                removeAnnotationAt(selectedSignature.pageNum, selectedSignature.index);
+                setSelectedSignature(null);
+              }}
+            >
+              Delete signature
+            </button>
+            <button
+              type="button"
+              className={styles.signatureReplaceBtn}
+              onClick={() => {
+                setSignatureReplaceTarget(selectedSignature);
+                setSignatureModalOpen(true);
+                setSelectedSignature(null);
+              }}
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              className={styles.signatureCloseBtn}
+              onClick={() => setSelectedSignature(null)}
+            >
+              Done
+            </button>
+          </div>
+        )}
       </div>
 
       <div ref={containerRef} className={styles.scrollContainer}>
@@ -453,6 +643,8 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                     width={pageDimensions[pageNum]?.w ?? 0}
                     height={pageDimensions[pageNum]?.h ?? 0}
                     annotations={annotations[pageNum] ?? []}
+                    selectedSignature={selectedSignature}
+                    currentPageNum={pageNum}
                   />
                   <div
                     className={styles.drawOverlay}
@@ -465,19 +657,47 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                     }}
                     style={{ cursor: currentTool ? 'crosshair' : 'default' }}
                   >
-                    {currentTool === 'text' &&
-                      textIndicatorPos?.pageNum === pageNum && (
+                    {textBoxDraft?.pageNum === pageNum && (() => {
+                      const dims = pageDimensions[pageNum];
+                      const canvasEl = pageCanvasRefs.current.get(pageNum);
+                      if (!dims || !canvasEl) return null;
+                      const cr = canvasEl.getBoundingClientRect();
+                      const scaleX = cr.width / dims.w;
+                      const scaleY = cr.height / dims.h;
+                      const x = Math.min(textBoxDraft.startX, textBoxDraft.currentX) * scaleX;
+                      const y = Math.min(textBoxDraft.startY, textBoxDraft.currentY) * scaleY;
+                      const w = Math.max(60, Math.abs(textBoxDraft.currentX - textBoxDraft.startX)) * scaleX;
+                      const h = Math.max(32, Math.abs(textBoxDraft.currentY - textBoxDraft.startY)) * scaleY;
+                      return (
                         <div
-                          className={styles.textIndicator}
-                          style={{
-                            left: textIndicatorPos.x,
-                            top: textIndicatorPos.y,
+                          className={styles.textBoxDraft}
+                          style={{ left: x, top: y, width: w, height: h }}
+                        />
+                      );
+                    })()}
+                    {editingText?.pageNum === pageNum && (() => {
+                      const annList = annotations[pageNum] ?? [];
+                      const ann = annList[editingText.index];
+                      if (!ann || ann.kind !== 'text') return null;
+                      const dims = pageDimensions[pageNum];
+                      const canvasEl = pageCanvasRefs.current.get(pageNum);
+                      if (!dims || !canvasEl) return null;
+                      const cr = canvasEl.getBoundingClientRect();
+                      const scaleX = cr.width / dims.w;
+                      const scaleY = cr.height / dims.h;
+                      return (
+                        <TextEditOverlay
+                          annotation={ann}
+                          scaleX={scaleX}
+                          scaleY={scaleY}
+                          onFinish={handleTextEditFinish}
+                          onCancel={() => {
+                            removeLastAnnotation(pageNum);
+                            setEditingText(null);
                           }}
-                        >
-                          <div className={styles.textIndicatorLine} />
-                          <span className={styles.textIndicatorLabel}>Text</span>
-                        </div>
-                      )}
+                        />
+                      );
+                    })()}
                   </div>
                 </>
               </div>
@@ -519,6 +739,16 @@ export function PdfViewer({ pdf, file, onError }: Props) {
           );
         })}
       </div>
+
+      {signatureModalOpen && (
+        <SignatureModal
+          onSave={handleSignatureSave}
+          onCancel={() => {
+            setSignatureModalOpen(false);
+            setSignatureReplaceTarget(null);
+          }}
+        />
+      )}
 
     </section>
   );

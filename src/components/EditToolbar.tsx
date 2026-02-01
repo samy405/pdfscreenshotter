@@ -7,6 +7,7 @@ type Props = {
   onUndo: () => void;
   onRedo: () => void;
   onRotate: () => void;
+  onSignatureClick?: () => void;
   canUndo: boolean;
   canRedo: boolean;
   disabled?: boolean;
@@ -26,6 +27,7 @@ export function EditToolbar({
   onUndo,
   onRedo,
   onRotate,
+  onSignatureClick,
   canUndo,
   canRedo,
   disabled,
@@ -47,6 +49,19 @@ export function EditToolbar({
           </button>
         ))}
       </div>
+      {onSignatureClick && (
+        <div className={styles.toolGroup}>
+          <button
+            type="button"
+            className={styles.toolBtn}
+            onClick={onSignatureClick}
+            disabled={disabled}
+            title="Add signature"
+          >
+            Signature
+          </button>
+        </div>
+      )}
       <div className={styles.toolGroup}>
         <button
           type="button"

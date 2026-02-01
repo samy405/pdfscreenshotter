@@ -15,10 +15,10 @@
   color: var(--text-primary);
 }
 
-/* Wrapper for viewer: takes vertical space below mode controls */
+/* Wrapper for viewer: same min-height as viewer for consistency */
 .viewerWrapper {
   flex: 1;
-  min-height: 600px;
+  min-height: var(--viewer-min-height);
   display: flex;
   flex-direction: column;
 }

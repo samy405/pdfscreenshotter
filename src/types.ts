@@ -11,7 +11,7 @@ export const SCALE_PRESETS: Record<ScalePreset, number> = {
 };
 
 /** Annotation kinds for edit overlay (relative to canvas dimensions). */
-export type AnnotationKind = 'highlight' | 'pen' | 'text' | 'redaction' | 'eraser';
+export type AnnotationKind = 'highlight' | 'pen' | 'text' | 'redaction' | 'eraser' | 'signature';
 
 export type HighlightAnnotation = {
   kind: 'highlight';
@@ -35,6 +35,8 @@ export type TextNoteAnnotation = {
   kind: 'text';
   x: number;
   y: number;
+  width: number;
+  height: number;
   text: string;
   fontSize: number;
   color: string;
@@ -48,11 +50,22 @@ export type RedactionAnnotation = {
   height: number;
 };
 
+export type SignatureAnnotation = {
+  kind: 'signature';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Data URL or blob URL of the signature image (transparent PNG preferred). */
+  imageDataUrl: string;
+};
+
 export type Annotation =
   | HighlightAnnotation
   | PenAnnotation
   | TextNoteAnnotation
-  | RedactionAnnotation;
+  | RedactionAnnotation
+  | SignatureAnnotation;
 
 /** One captured page: full-size blob for export, thumbnail URL for gallery. */
 export type CapturedPage = {
