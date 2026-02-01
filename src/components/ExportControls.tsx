@@ -9,6 +9,7 @@ import {
 import {
   expandRangesToPages,
   formatPageListForDisplay,
+  validateRange,
   validateRanges,
 } from '../lib/rangeUtils';
 import {
@@ -42,6 +43,7 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
     setMode,
     ranges,
     addRange,
+    addRangeWithDefaults,
     removeRange,
     updateRange,
     format,
@@ -71,6 +73,18 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
       if (abortRef) abortRef.current = null;
     };
   }, [abortRef]);
+
+  const originalTitleRef = useRef(document.title);
+  useEffect(() => {
+    if (progress) {
+      document.title = `Exporting… (${progress.current}/${progress.total}) - PDF Screenshot Exporter`;
+    } else {
+      document.title = originalTitleRef.current;
+    }
+    return () => {
+      document.title = originalTitleRef.current;
+    };
+  }, [progress]);
 
   const validationError = useMemo(
     () => (mode === 'range' ? validateRanges(ranges, numPages) : null),
@@ -164,11 +178,14 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   const handleModeChange = useCallback(
     (m: ExportMode) => {
       setMode(m);
-      if (m === 'range' && ranges.length === 0) {
-        addRange();
+      if (m === 'range') {
+        const allEmpty = ranges.every((r) => r.start === '' && r.end === '');
+        if (ranges.length === 0 || allEmpty) {
+          addRangeWithDefaults(numPages);
+        }
       }
     },
-    [setMode, ranges.length, addRange]
+    [setMode, ranges, addRangeWithDefaults, numPages]
   );
 
   const exportButtonLabel = useMemo(() => {
@@ -210,44 +227,58 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
         {mode === 'range' && (
           <>
             <div className={styles.rangeList}>
-              {ranges.map((r) => (
-                <div key={r.id} className={styles.rangeRow}>
-                  <div className={styles.field}>
-                    <label htmlFor={`start-${r.id}`}>Start</label>
-                    <input
-                      id={`start-${r.id}`}
-                      type="number"
-                      min={1}
-                      max={numPages}
-                      value={r.start}
-                      onChange={(e) => updateRange(r.id, { start: parseInt(e.target.value, 10) || 1 })}
-                      disabled={isExporting}
-                    />
+              {ranges.map((r) => {
+                const rangeError = validateRange(r, numPages);
+                return (
+                  <div key={r.id} className={styles.rangeRow}>
+                    <div className={`${styles.field} ${rangeError ? styles.fieldError : ''}`}>
+                      <label htmlFor={`start-${r.id}`}>Start</label>
+                      <input
+                        id={`start-${r.id}`}
+                        type="number"
+                        min={1}
+                        max={numPages}
+                        placeholder="1"
+                        value={r.start}
+                        onChange={(e) => updateRange(r.id, { start: e.target.value })}
+                        disabled={isExporting}
+                        aria-invalid={!!rangeError}
+                        aria-describedby={rangeError ? `range-error-${r.id}` : undefined}
+                      />
+                    </div>
+                    <span className={styles.rangeSep}>–</span>
+                    <div className={`${styles.field} ${rangeError ? styles.fieldError : ''}`}>
+                      <label htmlFor={`end-${r.id}`}>End</label>
+                      <input
+                        id={`end-${r.id}`}
+                        type="number"
+                        min={1}
+                        max={numPages}
+                        placeholder={String(numPages)}
+                        value={r.end}
+                        onChange={(e) => updateRange(r.id, { end: e.target.value })}
+                        disabled={isExporting}
+                        aria-invalid={!!rangeError}
+                        aria-describedby={rangeError ? `range-error-${r.id}` : undefined}
+                      />
+                    </div>
+                    {rangeError && (
+                      <span id={`range-error-${r.id}`} className={styles.inlineError} role="alert">
+                        {rangeError}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.removeBtn}
+                      onClick={() => removeRange(r.id)}
+                      disabled={isExporting || ranges.length <= 1}
+                      aria-label={`Remove range ${r.start || '?'}–${r.end || '?'}`}
+                    >
+                      ×
+                    </button>
                   </div>
-                  <span className={styles.rangeSep}>–</span>
-                  <div className={styles.field}>
-                    <label htmlFor={`end-${r.id}`}>End</label>
-                    <input
-                      id={`end-${r.id}`}
-                      type="number"
-                      min={1}
-                      max={numPages}
-                      value={r.end}
-                      onChange={(e) => updateRange(r.id, { end: parseInt(e.target.value, 10) || numPages })}
-                      disabled={isExporting}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.removeBtn}
-                    onClick={() => removeRange(r.id)}
-                    disabled={isExporting || ranges.length <= 1}
-                    aria-label={`Remove range ${r.start}–${r.end}`}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button
               type="button"

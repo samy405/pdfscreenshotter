@@ -84,6 +84,16 @@
   width: 5rem;
 }
 
+.fieldError input {
+  border-color: var(--error);
+}
+
+.inlineError {
+  font-size: 0.8rem;
+  color: var(--error);
+  align-self: center;
+}
+
 .rangeSep {
   color: var(--text-muted);
   padding-bottom: 0.5rem;

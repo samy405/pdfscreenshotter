@@ -16,13 +16,19 @@ export function PreviewPanel({ pdf, file }: Props) {
   const numPages = getPageCount(pdf);
   const [selectedPage, setSelectedPage] = useState(1);
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({});
+  const [thumbnailsLoading, setThumbnailsLoading] = useState(true);
   const largeCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const thumbCount = Math.min(THUMBNAIL_COUNT, numPages);
 
   useEffect(() => {
+    setSelectedPage((p) => Math.min(p, numPages));
+  }, [numPages]);
+
+  useEffect(() => {
     const canvas = document.createElement('canvas');
     let cancelled = false;
+    setThumbnailsLoading(true);
 
     const load = async () => {
       for (let i = 1; i <= thumbCount; i++) {
@@ -36,6 +42,7 @@ export function PreviewPanel({ pdf, file }: Props) {
           // ignore
         }
       }
+      if (!cancelled) setThumbnailsLoading(false);
     };
     load();
     return () => { cancelled = true; };
@@ -53,6 +60,21 @@ export function PreviewPanel({ pdf, file }: Props) {
   const goNext = useCallback(() => {
     setSelectedPage((p) => Math.min(numPages, p + 1));
   }, [numPages]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!pdf || !file) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setSelectedPage((p) => Math.max(1, p - 1));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setSelectedPage((p) => Math.min(numPages, p + 1));
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [pdf, file, numPages]);
 
   if (!pdf || !file) return null;
 
@@ -74,7 +96,9 @@ export function PreviewPanel({ pdf, file }: Props) {
             {thumbnails[pageNum] ? (
               <img src={thumbnails[pageNum]} alt={`Page ${pageNum}`} />
             ) : (
-              <span className={styles.thumbPlaceholder}>{pageNum}</span>
+              <span className={styles.thumbPlaceholder}>
+                {thumbnailsLoading ? '…' : pageNum}
+              </span>
             )}
           </button>
         ))}

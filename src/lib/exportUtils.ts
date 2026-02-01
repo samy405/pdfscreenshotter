@@ -29,8 +29,22 @@ export type ExportResult = {
   scale: number;
 };
 
+const EXPORT_RETRY_ATTEMPTS = 3;
+
 function padPageNum(n: number): string {
   return String(n).padStart(3, '0');
+}
+
+async function withRetry<T>(fn: () => Promise<T>, attempts = EXPORT_RETRY_ATTEMPTS): Promise<T> {
+  let lastError: Error | undefined;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  throw lastError;
 }
 
 function canvasToBlob(
@@ -77,14 +91,12 @@ export async function exportPagesToZip(
       currentPage: pageNum,
     });
 
-    await renderPageToCanvas(pdf, pageNum, offscreenCanvas, options.scale);
+    await withRetry(() => renderPageToCanvas(pdf, pageNum, offscreenCanvas, options.scale));
 
     if (signal.aborted) throw new DOMException('Export canceled', 'AbortError');
 
-    const blob = await canvasToBlob(
-      offscreenCanvas,
-      options.format,
-      options.jpgQuality
+    const blob = await withRetry(() =>
+      canvasToBlob(offscreenCanvas, options.format, options.jpgQuality)
     );
 
     const filename = `page-${padPageNum(pageNum)}.${ext}`;

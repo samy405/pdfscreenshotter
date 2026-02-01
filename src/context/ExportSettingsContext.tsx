@@ -23,7 +23,11 @@ type StoredSettings = {
 };
 
 function defaultRange(): PageRange {
-  return { id: createRangeId(), start: 1, end: 1 };
+  return { id: createRangeId(), start: '', end: '' };
+}
+
+function defaultRangeForNumPages(numPages: number): PageRange {
+  return { id: createRangeId(), start: '1', end: String(numPages) };
 }
 
 function loadSettings(): StoredSettings {
@@ -44,11 +48,11 @@ function loadSettings(): StoredSettings {
     if (Array.isArray(parsed.ranges) && parsed.ranges.length > 0) {
       ranges = parsed.ranges.map((r) => ({
         id: typeof r.id === 'string' ? r.id : createRangeId(),
-        start: typeof r.start === 'number' ? r.start : 1,
-        end: typeof r.end === 'number' ? r.end : 1,
+        start: typeof r.start === 'string' ? r.start : (typeof r.start === 'number' ? String(r.start) : ''),
+        end: typeof r.end === 'string' ? r.end : (typeof r.end === 'number' ? String(r.end) : ''),
       }));
     } else if (typeof parsed.startPage === 'number' && typeof parsed.endPage === 'number') {
-      ranges = [{ id: createRangeId(), start: parsed.startPage, end: parsed.endPage }];
+      ranges = [{ id: createRangeId(), start: String(parsed.startPage), end: String(parsed.endPage) }];
     } else {
       ranges = [defaultRange()];
     }
@@ -90,6 +94,7 @@ type ExportSettingsContextValue = {
   ranges: PageRange[];
   setRanges: (r: PageRange[]) => void;
   addRange: () => void;
+  addRangeWithDefaults: (numPages: number) => void;
   removeRange: (id: string) => void;
   updateRange: (id: string, updates: Partial<Pick<PageRange, 'start' | 'end'>>) => void;
   format: ExportFormat;
@@ -120,7 +125,14 @@ export function ExportSettingsProvider({ children }: { children: ReactNode }) {
   const addRange = useCallback(() => {
     setSettings((prev) => ({
       ...prev,
-      ranges: [...prev.ranges, { id: createRangeId(), start: 1, end: 1 }],
+      ranges: [...prev.ranges, defaultRange()],
+    }));
+  }, []);
+
+  const addRangeWithDefaults = useCallback((numPages: number) => {
+    setSettings((prev) => ({
+      ...prev,
+      ranges: [defaultRangeForNumPages(numPages)],
     }));
   }, []);
 
@@ -151,6 +163,7 @@ export function ExportSettingsProvider({ children }: { children: ReactNode }) {
     ranges: settings.ranges,
     setRanges,
     addRange,
+    addRangeWithDefaults,
     removeRange,
     updateRange,
     format: settings.format,

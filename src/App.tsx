@@ -3,6 +3,7 @@ import type { PDFDocument } from './lib/pdfUtils';
 import type { ExportResult } from './lib/exportUtils';
 import { ThemeProvider } from './context/ThemeContext';
 import { ExportSettingsProvider } from './context/ExportSettingsContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppShell } from './components/AppShell';
 import { UploadPanel } from './components/UploadPanel';
 import { PreviewPanel } from './components/PreviewPanel';
@@ -46,12 +47,15 @@ function AppContent() {
 
   const handleClear = useCallback(() => {
     exportAbortRef.current?.();
+    if (pdf) {
+      pdf.destroy().catch(() => {});
+    }
     setPdf(null);
     setFile(null);
     setError('');
     setPasswordFile(null);
     setSuccessResult(null);
-  }, []);
+  }, [pdf]);
 
   const handleSuccess = useCallback((result: ExportResult) => {
     setSuccessResult(result);
@@ -111,10 +115,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <ExportSettingsProvider>
-        <AppContent />
-      </ExportSettingsProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ExportSettingsProvider>
+          <AppContent />
+        </ExportSettingsProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
