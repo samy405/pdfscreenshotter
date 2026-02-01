@@ -1,0 +1,60 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dropzone {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  min-height: 140px;
+  padding: 2rem;
+  background: var(--bg-surface);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropzone:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.dropzone.dragging {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.dropzone.loading {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
