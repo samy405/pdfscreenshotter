@@ -18,8 +18,8 @@
 .scrollContainer {
   overflow-y: auto;
   overflow-x: hidden;
-  height: min(70vh, 750px);
-  min-height: 450px;
+  height: min(80vh, 900px);
+  min-height: 600px;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -29,8 +29,8 @@
 
 @media (max-width: 768px) {
   .scrollContainer {
-    height: min(60vh, 500px);
-    min-height: 350px;
+    height: min(65vh, 550px);
+    min-height: 400px;
   }
 }
 
@@ -131,6 +131,35 @@
   right: 0;
   bottom: 0;
   border-radius: 8px;
+}
+
+/* Text placement indicator when Text tool is active */
+.textIndicator {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-1px, 0);
+}
+
+.textIndicatorLine {
+  width: 2px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.textIndicatorLabel {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--bg-surface);
+  padding: 0 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  opacity: 0.95;
 }
 
 .capturedBanner {

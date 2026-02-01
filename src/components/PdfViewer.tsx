@@ -248,9 +248,34 @@ export function PdfViewer({ pdf, file, onError }: Props) {
   );
 
   const [pageDimensions, setPageDimensions] = useState<Record<number, { w: number; h: number }>>({});
+  const [textIndicatorPos, setTextIndicatorPos] = useState<{
+    pageNum: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   /* Fixed viewer scale for stable display; export uses ExportSettings.scale */
   const viewerScale = 1.5;
+
+  const handlePagePointerMoveForText = useCallback(
+    (pageNum: number, e: React.PointerEvent) => {
+      if (currentTool === 'text') {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setTextIndicatorPos({
+          pageNum,
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
+      } else {
+        setTextIndicatorPos(null);
+      }
+    },
+    [currentTool]
+  );
+
+  const handlePagePointerLeave = useCallback(() => {
+    setTextIndicatorPos(null);
+  }, []);
 
   const rotateCurrent = useCallback(() => {
     if (activePage == null) return;
@@ -313,6 +338,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
 
   const handlePagePointerMove = useCallback(
     (pageNum: number, e: React.PointerEvent) => {
+      handlePagePointerMoveForText(pageNum, e);
       if (!currentTool || !drawRef.current) return;
       const coords = getCanvasCoords(pageNum, e as unknown as React.MouseEvent);
       if (!coords) return;
@@ -320,7 +346,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
         drawRef.current.points.push(coords);
       }
     },
-    [currentTool, getCanvasCoords]
+    [currentTool, getCanvasCoords, handlePagePointerMoveForText]
   );
 
   const handlePagePointerUp = useCallback(
@@ -433,9 +459,26 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                     onPointerDown={(e) => handlePagePointerDown(pageNum, e)}
                     onPointerMove={(e) => handlePagePointerMove(pageNum, e)}
                     onPointerUp={(e) => handlePagePointerUp(pageNum, e)}
-                    onPointerLeave={(e) => handlePagePointerUp(pageNum, e)}
+                    onPointerLeave={(e) => {
+                      handlePagePointerUp(pageNum, e);
+                      handlePagePointerLeave();
+                    }}
                     style={{ cursor: currentTool ? 'crosshair' : 'default' }}
-                  />
+                  >
+                    {currentTool === 'text' &&
+                      textIndicatorPos?.pageNum === pageNum && (
+                        <div
+                          className={styles.textIndicator}
+                          style={{
+                            left: textIndicatorPos.x,
+                            top: textIndicatorPos.y,
+                          }}
+                        >
+                          <div className={styles.textIndicatorLine} />
+                          <span className={styles.textIndicatorLabel}>Text</span>
+                        </div>
+                      )}
+                  </div>
                 </>
               </div>
               {isActive && alreadyCaptured && (
