@@ -3,15 +3,72 @@ import type { PDFDocument } from './lib/pdfUtils';
 import type { ExportResult } from './lib/exportUtils';
 import { ThemeProvider } from './context/ThemeContext';
 import { ExportSettingsProvider } from './context/ExportSettingsContext';
+import { AutoCaptureProvider } from './context/AutoCaptureContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppShell } from './components/AppShell';
 import { UploadPanel } from './components/UploadPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { ExportControls } from './components/ExportControls';
+import { PdfViewer } from './components/PdfViewer';
+import { CapturedGallery } from './components/CapturedGallery';
 import { PasswordModal } from './components/PasswordModal';
 import { Toast } from './components/Toast';
 import { Alert } from './components/Alert';
+import { useExportSettings } from './context/ExportSettingsContext';
 import styles from './App.module.css';
+
+type AutoCaptureContentProps = {
+  pdf: PDFDocument;
+  file: File;
+  onError: (message: string) => void;
+  onSuccess: (result: ExportResult) => void;
+  onClear: () => void;
+  exportAbortRef: React.MutableRefObject<(() => void) | null>;
+};
+
+function AutoCaptureContent({
+  pdf,
+  file,
+  onError,
+  onSuccess,
+  onClear,
+  exportAbortRef,
+}: AutoCaptureContentProps) {
+  const { mode } = useExportSettings();
+  if (mode === 'autoCapture') {
+    return (
+      <AutoCaptureProvider>
+        <ExportControls
+          pdf={pdf}
+          file={file}
+          onError={onError}
+          onSuccess={onSuccess}
+          abortRef={exportAbortRef}
+        />
+        <PdfViewer pdf={pdf} file={file} onError={onError} />
+        <CapturedGallery onSuccess={onSuccess} onError={onError} />
+        <button type="button" className={styles.clearBtn} onClick={onClear}>
+          Clear / Upload another PDF
+        </button>
+      </AutoCaptureProvider>
+    );
+  }
+  return (
+    <>
+      <PreviewPanel pdf={pdf} file={file} />
+      <ExportControls
+        pdf={pdf}
+        file={file}
+        onError={onError}
+        onSuccess={onSuccess}
+        abortRef={exportAbortRef}
+      />
+      <button type="button" className={styles.clearBtn} onClick={onClear}>
+        Clear / Upload another PDF
+      </button>
+    </>
+  );
+}
 
 function AppContent() {
   const [pdf, setPdf] = useState<PDFDocument | null>(null);
@@ -78,23 +135,14 @@ function AppContent() {
       )}
 
       {pdf && file && (
-        <>
-          <PreviewPanel pdf={pdf} file={file} />
-          <ExportControls
-            pdf={pdf}
-            file={file}
-            onError={setError}
-            onSuccess={handleSuccess}
-            abortRef={exportAbortRef}
-          />
-          <button
-            type="button"
-            className={styles.clearBtn}
-            onClick={handleClear}
-          >
-            Clear / Upload another PDF
-          </button>
-        </>
+        <AutoCaptureContent
+          pdf={pdf}
+          file={file}
+          onError={setError}
+          onSuccess={handleSuccess}
+          onClear={handleClear}
+          exportAbortRef={exportAbortRef}
+        />
       )}
 
       {passwordFile && (

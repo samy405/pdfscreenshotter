@@ -31,11 +31,12 @@ export async function renderPageToCanvas(
   pdf: PDFDocument,
   pageNum: number,
   canvas: HTMLCanvasElement,
-  scale: number = 2
+  scale: number = 2,
+  rotation: number = 0
 ): Promise<void> {
   const page = await pdf.getPage(pageNum);
   try {
-    const viewport = page.getViewport({ scale });
+    const viewport = page.getViewport({ scale, rotation });
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvas, viewport }).promise;

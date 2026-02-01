@@ -4,6 +4,7 @@ import type { PDFDocument } from './pdfUtils';
 import { renderPageToCanvas } from './pdfUtils';
 import { sanitizeFilenamePrefix } from './filenameUtils';
 import type { ExportFormat } from '../types';
+import type { CapturedPage } from '../types';
 
 export type ExportOptions = {
   format: ExportFormat;
@@ -122,5 +123,35 @@ export async function exportPagesToZip(
     pageCount: total,
     format: options.format,
     scale: options.scale,
+  };
+}
+
+/**
+ * Export selected captured pages (from Auto Capture mode) to a ZIP file.
+ * Uses existing format/prefix from options; filenames are page-001.png etc.
+ */
+export async function exportCapturedToZip(
+  captures: Map<number, CapturedPage>,
+  selectedPageNumbers: number[],
+  options: { format: ExportFormat; prefix: string }
+): Promise<ExportResult> {
+  const ext = options.format === 'jpg' ? 'jpg' : 'png';
+  const safePrefix = sanitizeFilenamePrefix(options.prefix) || 'screenshots';
+  const zipFilename = `${safePrefix}_captured.zip`;
+  const zip = new JSZip();
+  const sorted = [...selectedPageNumbers].filter((pn) => captures.has(pn)).sort((a, b) => a - b);
+  for (const pageNum of sorted) {
+    const capture = captures.get(pageNum);
+    if (!capture) continue;
+    const filename = `page-${String(pageNum).padStart(3, '0')}.${ext}`;
+    zip.file(filename, capture.fullSizeBlob);
+  }
+  const zipBlob = await zip.generateAsync({ type: 'blob' }, () => {});
+  saveAs(zipBlob, zipFilename);
+  return {
+    zipFilename,
+    pageCount: sorted.length,
+    format: options.format,
+    scale: 0, // not applicable for pre-captured
   };
 }

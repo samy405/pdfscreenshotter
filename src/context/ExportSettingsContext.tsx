@@ -57,7 +57,7 @@ function loadSettings(): StoredSettings {
       ranges = [defaultRange()];
     }
     return {
-      mode: parsed.mode === 'range' ? 'range' : 'all',
+      mode: parsed.mode === 'range' ? 'range' : parsed.mode === 'autoCapture' ? 'autoCapture' : 'all',
       ranges,
       format: parsed.format === 'jpg' ? 'jpg' : 'png',
       jpgQuality: typeof parsed.jpgQuality === 'number'

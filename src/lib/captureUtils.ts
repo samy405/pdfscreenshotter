@@ -1,0 +1,120 @@
+/**
+ * Helpers for Auto Capture (Review Mode): active-page detection and canvas compositing.
+ */
+
+export type PageIntersectionEntry = { pageNumber: number; ratio: number };
+
+/**
+ * From IntersectionObserver entries (page container elements), pick the page with
+ * the highest intersection ratio as the "active" page.
+ */
+export function getActivePageFromIntersections(
+  entries: Map<number, number>
+): number | null {
+  if (entries.size === 0) return null;
+  let bestPage: number | null = null;
+  let bestRatio = 0;
+  for (const [pageNumber, ratio] of entries) {
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      bestPage = pageNumber;
+    }
+  }
+  return bestPage;
+}
+
+/**
+ * Debounce a callback so it runs only after the value has stayed stable for `delayMs`.
+ * Returns a function that accepts the new value; when called, the callback will run
+ * after delayMs if no newer value is passed.
+ */
+export function debounceActivePage<T>(
+  delayMs: number,
+  onStable: (value: T) => void
+): (value: T) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastValue: T | undefined;
+  return (value: T) => {
+    lastValue = value;
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      if (lastValue !== undefined) {
+        onStable(lastValue);
+      }
+    }, delayMs);
+  };
+}
+
+export type ExportFormat = 'png' | 'jpg';
+
+/**
+ * Composite PDF canvas and optional annotation overlay into a single Blob.
+ * If overlay is null, returns blob from pdfCanvas only.
+ */
+export async function compositeCanvasesToBlob(
+  pdfCanvas: HTMLCanvasElement,
+  overlayCanvas: HTMLCanvasElement | null,
+  format: ExportFormat,
+  jpgQuality: number
+): Promise<Blob> {
+  const w = pdfCanvas.width;
+  const h = pdfCanvas.height;
+  const output = document.createElement('canvas');
+  output.width = w;
+  output.height = h;
+  const ctx = output.getContext('2d');
+  if (!ctx) throw new Error('Could not get 2d context');
+  ctx.drawImage(pdfCanvas, 0, 0);
+  if (overlayCanvas && overlayCanvas.width === w && overlayCanvas.height === h) {
+    ctx.drawImage(overlayCanvas, 0, 0);
+  }
+  const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
+  return new Promise((resolve, reject) => {
+    output.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))),
+      mime,
+      format === 'jpg' ? jpgQuality : undefined
+    );
+  });
+}
+
+const THUMBNAIL_MAX_SIZE = 200;
+
+/**
+ * Create a thumbnail Blob from a full-size image Blob (e.g. PNG/JPEG).
+ */
+export function createThumbnailBlob(fullSizeBlob: Blob): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(fullSizeBlob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > THUMBNAIL_MAX_SIZE || height > THUMBNAIL_MAX_SIZE) {
+        const scale = THUMBNAIL_MAX_SIZE / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('No 2d context'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
+        'image/png',
+        0.85
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Image load failed'));
+    };
+    img.src = url;
+  });
+}

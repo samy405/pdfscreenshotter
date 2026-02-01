@@ -46,9 +46,35 @@ The PDF.js worker loads from unpkg.com. This works in both dev and production. N
 
 In **Range** mode, you can define multiple page ranges (e.g., 2–3 and 5–6) and export them all in one ZIP. The UI shows exactly what you enter; overlapping or adjacent ranges are merged silently for export only. Output pages are deduplicated and sorted in ascending order.
 
+## Auto Capture (Review Mode)
+
+In **Auto Capture (Review Mode)** you scroll through the PDF viewer; when a page becomes the “active” page (highest visibility in the viewport), it is captured automatically as a full-page image at the selected scale. Each page is captured at most once automatically; you can recapture or undo capture from the viewer.
+
+- **Captured Pages panel**: Thumbnail grid of captured pages (in page order), with checkboxes (selected by default). Use **Select all / Deselect all**, **Remove selected**, **Clear all**, and **Export selected to ZIP**. Summary: “Captured: X pages | Selected: Y pages”. Clicking a thumbnail scrolls the viewer to that page.
+- **Auto Capture toggle**: Turn auto-capture on or off. When off, use **Capture now** in the viewer to capture the current page manually.
+- **Per-page actions**: **Undo capture** (remove from captured set), **Recapture** (re-render and replace the stored image).
+- **Edit tools**: Annotations (highlight, pen, text note, redaction, eraser) and undo/redo for the current page; optional rotate 90°. Annotations are drawn on an overlay and included in the captured/exported image. If a page was already captured, you’ll see a prompt to undo capture before re-capturing after edits.
+
+Export from the Captured Pages panel uses the same format, scale, and filename prefix as in Export settings. Output filenames are `page-001.png` (or `.jpg`) by page number.
+
+## Editing tools (annotations)
+
+Editing is **annotation overlays only**, not full Acrobat-style editing:
+
+- **Highlight**: Semi-transparent yellow rectangle.
+- **Pen**: Freehand drawing.
+- **Text note**: Simple text box (prompt for text).
+- **Redaction**: Black rectangle.
+- **Eraser**: Removes the last annotation on the current page.
+- **Undo / Redo**: For annotations on the current page only.
+- **Rotate**: Rotate the current page 90° (affects capture/export).
+
+Annotations are stored as data and composited with the PDF when capturing or exporting. They are not written back into the PDF file.
+
 ## Known limitations
 
 - **PDF size**: Optimized for PDFs up to ~50 pages. Larger files may be slow or hit browser memory limits.
 - **Worker**: The PDF.js worker loads from unpkg.com. Requires network access for first load.
-- **Memory**: Large PDFs and high scale settings increase memory use.
+- **Memory**: Large PDFs and high scale settings increase memory use. In Auto Capture mode, thumbnails use object URLs; full-size captures are stored as Blobs.
 - **Filename sanitization**: Output filenames are sanitized for Windows compatibility.
+- **Editing**: Annotations are overlay-only (highlight, pen, text, redaction). No full PDF text editing or “Export edited PDF” (e.g. pdf-lib) in this version.

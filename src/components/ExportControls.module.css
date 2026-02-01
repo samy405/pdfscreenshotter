@@ -145,6 +145,12 @@
   color: var(--accent);
 }
 
+.autoCaptureHint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
 .rangeSummary {
   margin-top: 0.25rem;
 }

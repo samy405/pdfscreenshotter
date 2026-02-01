@@ -97,6 +97,7 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
   );
 
   const canExport = useMemo(() => {
+    if (mode === 'autoCapture') return false; // export is from CapturedGallery
     if (prefix.trim().length === 0) return false;
     if (mode === 'all') return true;
     return !validationError && expandedPages.length > 0;
@@ -188,12 +189,17 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
     [setMode, ranges, addRangeWithDefaults, numPages]
   );
 
+  const isAutoCapture = mode === 'autoCapture';
+
   const exportButtonLabel = useMemo(() => {
     if (isExporting) return 'Exporting…';
+    if (mode === 'autoCapture') return 'Export from Captured Pages panel';
     if (mode === 'all') return 'Export all pages';
     const n = expandedPages.length;
     return n === 0 ? 'Export pages' : `Export ${n} page${n !== 1 ? 's' : ''}`;
   }, [isExporting, mode, expandedPages.length]);
+
+  const showExportButton = !isAutoCapture;
 
   return (
     <section className={styles.container} aria-label="Export settings">
@@ -219,10 +225,26 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
                 onChange={() => handleModeChange('range')}
                 disabled={isExporting}
               />
-              Range
+              Ranges
+            </label>
+            <label className={styles.radio}>
+              <input
+                type="radio"
+                name="mode"
+                checked={mode === 'autoCapture'}
+                onChange={() => handleModeChange('autoCapture')}
+                disabled={isExporting}
+              />
+              Auto Capture (Review Mode)
             </label>
           </div>
         </div>
+
+        {isAutoCapture && (
+          <p className={styles.autoCaptureHint}>
+            Scroll through the PDF viewer; pages are captured when they become active. Export selected captures from the Captured Pages panel below.
+          </p>
+        )}
 
         {mode === 'range' && (
           <>
@@ -364,14 +386,16 @@ export function ExportControls({ pdf, file, onError, onSuccess, abortRef }: Prop
           </div>
         </div>
 
-        <button
-          type="button"
-          className={styles.exportBtn}
-          onClick={handleExport}
-          disabled={isExporting || !canExport}
-        >
-          {exportButtonLabel}
-        </button>
+        {showExportButton && (
+          <button
+            type="button"
+            className={styles.exportBtn}
+            onClick={handleExport}
+            disabled={isExporting || !canExport}
+          >
+            {exportButtonLabel}
+          </button>
+        )}
       </div>
 
       {progress && (
