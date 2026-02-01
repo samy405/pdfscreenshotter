@@ -12,4 +12,15 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['pdfjs-dist'],
   },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'pdf-vendor': ['pdfjs-dist'],
+          'zip-vendor': ['jszip', 'file-saver'],
+        },
+      },
+    },
+  },
 })
