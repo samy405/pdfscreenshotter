@@ -25,23 +25,22 @@ function wrapText(
   return lines;
 }
 
+const TEXT_PAD = 4;
+const TEXT_FONT_SIZE = 16;
+
 function drawTextInBox(
   ctx: CanvasRenderingContext2D,
   a: TextNoteAnnotation
 ): void {
-  const pad = 4;
-  const innerW = Math.max(20, a.width - pad * 2);
-  const innerH = Math.max(16, a.height - pad * 2);
-  let fs = Math.min(24, Math.floor(innerH / 1.3), Math.floor(innerW / 4));
-  fs = Math.max(10, fs);
+  const innerW = Math.max(20, a.width - TEXT_PAD * 2);
+  const fs = TEXT_FONT_SIZE;
   const lines = wrapText(ctx, a.text, innerW, fs);
   const lineHeight = fs * 1.2;
-  const totalH = lines.length * lineHeight;
-  const startY = a.y + pad + (innerH - totalH) / 2 + fs;
+  const startY = a.y + TEXT_PAD + fs;
   ctx.font = `${fs}px sans-serif`;
   ctx.fillStyle = a.color;
   lines.forEach((line, i) => {
-    ctx.fillText(line, a.x + pad, startY + i * lineHeight);
+    ctx.fillText(line, a.x + TEXT_PAD, startY + i * lineHeight);
   });
 }
 
@@ -102,11 +101,6 @@ export function AnnotationLayer({ width, height, annotations, selectedSignature,
           ctx.stroke();
           break;
         case 'text':
-          ctx.strokeStyle = 'rgba(79, 95, 213, 0.5)';
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-          ctx.strokeRect(a.x, a.y, a.width, a.height);
-          ctx.fillRect(a.x, a.y, a.width, a.height);
-          ctx.strokeRect(a.x, a.y, a.width, a.height);
           drawTextInBox(ctx, a);
           break;
         case 'redaction':

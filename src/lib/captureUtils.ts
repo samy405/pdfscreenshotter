@@ -82,21 +82,21 @@ export function drawSignatureImage(
   });
 }
 
-/** Draw wrapped text inside a rect on canvas (for export). */
+const TEXT_PAD = 4;
+const TEXT_FONT_SIZE = 16;
+
+/** Draw wrapped text inside a rect on canvas (for export). Text only, no background. */
 export function drawTextInRect(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
   y: number,
   width: number,
-  height: number,
+  _height: number,
   color: string = '#000'
 ): void {
-  const pad = 4;
-  const innerW = Math.max(20, width - pad * 2);
-  const innerH = Math.max(16, height - pad * 2);
-  let fs = Math.min(24, Math.floor(innerH / 1.3), Math.floor(innerW / 4));
-  fs = Math.max(10, fs);
+  const innerW = Math.max(20, width - TEXT_PAD * 2);
+  const fs = TEXT_FONT_SIZE;
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let current = '';
@@ -114,10 +114,9 @@ export function drawTextInRect(
   }
   if (current) lines.push(current);
   const lineHeight = fs * 1.2;
-  const totalH = lines.length * lineHeight;
-  const startY = y + pad + (innerH - totalH) / 2 + fs;
+  const startY = y + TEXT_PAD + fs;
   lines.forEach((line, i) => {
-    ctx.fillText(line, x + pad, startY + i * lineHeight);
+    ctx.fillText(line, x + TEXT_PAD, startY + i * lineHeight);
   });
 }
 

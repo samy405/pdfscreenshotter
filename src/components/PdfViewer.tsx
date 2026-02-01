@@ -168,10 +168,6 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                   }
                   break;
                 case 'text':
-                  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                  ctx.fillRect(a.x, a.y, a.width, a.height);
-                  ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-                  ctx.strokeRect(a.x, a.y, a.width, a.height);
                   drawTextInRect(ctx, a.text, a.x, a.y, a.width, a.height, a.color);
                   break;
                 case 'redaction':
@@ -360,18 +356,22 @@ export function PdfViewer({ pdf, file, onError }: Props) {
           points: [],
         };
       } else if (currentTool === 'text') {
+        const overlay = e.currentTarget as HTMLElement;
+        const rect = overlay.getBoundingClientRect();
+        const startX = e.clientX - rect.left;
+        const startY = e.clientY - rect.top;
         drawRef.current = {
           kind: 'text',
-          startX: coords.x,
-          startY: coords.y,
+          startX,
+          startY,
           pageNum,
         };
         setTextBoxDraft({
           pageNum,
-          startX: coords.x,
-          startY: coords.y,
-          currentX: coords.x,
-          currentY: coords.y,
+          startX,
+          startY,
+          currentX: startX,
+          currentY: startY,
         });
       }
     },
@@ -403,8 +403,12 @@ export function PdfViewer({ pdf, file, onError }: Props) {
       }
       const dr = drawRef.current;
       if (dr?.kind === 'text' && dr.pageNum === pageNum) {
+        const overlay = e.currentTarget as HTMLElement;
+        const rect = overlay.getBoundingClientRect();
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
         setTextBoxDraft((prev) =>
-          prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
+          prev ? { ...prev, currentX, currentY } : null
         );
         return;
       }
@@ -429,12 +433,25 @@ export function PdfViewer({ pdf, file, onError }: Props) {
       if (!dr) return;
       if (dr.kind === 'text' && dr.pageNum === pageNum) {
         setTextBoxDraft(null);
-        const endCoords = getCanvasCoords(pageNum, e as unknown as React.MouseEvent);
-        if (!endCoords) return;
-        const x = Math.min(dr.startX, endCoords.x);
-        const y = Math.min(dr.startY, endCoords.y);
-        const width = Math.max(60, Math.abs(endCoords.x - dr.startX));
-        const height = Math.max(32, Math.abs(endCoords.y - dr.startY));
+        const overlay = e.currentTarget as HTMLElement;
+        const rect = overlay.getBoundingClientRect();
+        const dims = pageDimensions[pageNum];
+        if (!dims) return;
+        const scaleToBufferX = dims.w / rect.width;
+        const scaleToBufferY = dims.h / rect.height;
+        const displayX = Math.min(dr.startX, textBoxDraft?.currentX ?? dr.startX);
+        const displayY = Math.min(dr.startY, textBoxDraft?.currentY ?? dr.startY);
+        const displayW = Math.abs((textBoxDraft?.currentX ?? dr.startX) - dr.startX);
+        const displayH = Math.abs((textBoxDraft?.currentY ?? dr.startY) - dr.startY);
+        const isClick = displayW < 10 || displayH < 10;
+        const x = isClick
+          ? dr.startX * scaleToBufferX
+          : displayX * scaleToBufferX;
+        const y = isClick
+          ? dr.startY * scaleToBufferY
+          : displayY * scaleToBufferY;
+        const width = isClick ? 220 : displayW * scaleToBufferX;
+        const height = isClick ? 48 : displayH * scaleToBufferY;
         appendAnnotation(pageNum, {
           kind: 'text',
           x,
@@ -442,7 +459,7 @@ export function PdfViewer({ pdf, file, onError }: Props) {
           width,
           height,
           text: '',
-          fontSize: 14,
+          fontSize: 16,
           color: '#000',
         });
         const annList = annotations[pageNum] ?? [];
@@ -658,16 +675,10 @@ export function PdfViewer({ pdf, file, onError }: Props) {
                     style={{ cursor: currentTool ? 'crosshair' : 'default' }}
                   >
                     {textBoxDraft?.pageNum === pageNum && (() => {
-                      const dims = pageDimensions[pageNum];
-                      const canvasEl = pageCanvasRefs.current.get(pageNum);
-                      if (!dims || !canvasEl) return null;
-                      const cr = canvasEl.getBoundingClientRect();
-                      const scaleX = cr.width / dims.w;
-                      const scaleY = cr.height / dims.h;
-                      const x = Math.min(textBoxDraft.startX, textBoxDraft.currentX) * scaleX;
-                      const y = Math.min(textBoxDraft.startY, textBoxDraft.currentY) * scaleY;
-                      const w = Math.max(60, Math.abs(textBoxDraft.currentX - textBoxDraft.startX)) * scaleX;
-                      const h = Math.max(32, Math.abs(textBoxDraft.currentY - textBoxDraft.startY)) * scaleY;
+                      const x = Math.min(textBoxDraft.startX, textBoxDraft.currentX);
+                      const y = Math.min(textBoxDraft.startY, textBoxDraft.currentY);
+                      const w = Math.abs(textBoxDraft.currentX - textBoxDraft.startX);
+                      const h = Math.abs(textBoxDraft.currentY - textBoxDraft.startY);
                       return (
                         <div
                           className={styles.textBoxDraft}
