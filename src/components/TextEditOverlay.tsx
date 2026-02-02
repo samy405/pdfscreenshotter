@@ -48,6 +48,9 @@ export function TextEditOverlay({
   const width = annotation.width * scaleX;
   const height = annotation.height * scaleY;
 
+  // Use the annotation's color for the editor to match final render
+  const textColor = annotation.color || '#000';
+
   return (
     <textarea
       ref={textareaRef}
@@ -57,6 +60,8 @@ export function TextEditOverlay({
         top,
         width,
         height,
+        color: textColor,
+        caretColor: textColor,
       }}
       placeholder="Type here…"
       defaultValue={annotation.text}

@@ -4,16 +4,15 @@
   font-size: 16px;
   font-family: inherit;
   line-height: 1.35;
-  color: var(--text-primary);
+  /* color and caret-color set via inline style to match annotation.color */
   background: transparent;
-  border: 1px dashed var(--border-strong);
+  border: 1px dashed rgba(0, 0, 0, 0.3);
   border-radius: 2px;
   resize: none;
   outline: none;
   box-sizing: border-box;
-  caret-color: var(--text-primary);
 }
 
 .textEditOverlay::placeholder {
-  color: var(--text-muted);
+  color: rgba(0, 0, 0, 0.4);
 }
